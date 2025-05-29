@@ -120,19 +120,15 @@ class CarScraper:
             # Based on the HTML structure you showed, look for the correct selectors
             car_elements = []
             
-            # Try different selectors to find car listings for CarWorld Classics
+            # Based on your screenshot, look for the correct CarWorld Classics selectors
             selectors_to_try = [
-                ('div', {'class': re.compile(r'.*car.*item.*')}),
-                ('div', {'class': re.compile(r'.*vehicle.*')}),
-                ('article', {'class': re.compile(r'.*car.*')}),
+                ('div', {'class': 'each-product'}),  # This is what we see in the screenshot
+                ('div', {'class': re.compile(r'.*each-product.*')}),
+                ('section', {'class': 'aanbod-list-sec'}),
+                ('div', {'class': re.compile(r'.*col-xl-6.*col-lg-6.*mb-5.*')}),
+                ('a', {'href': re.compile(r'.*/occasions-kopen/.*')}),
                 ('div', {'class': re.compile(r'.*product.*')}),
-                ('a', {'href': re.compile(r'.*/auto/.*')}),
-                ('a', {'href': re.compile(r'.*/car/.*')}),
-                ('a', {'href': re.compile(r'.*/detail/.*')}),
-                ('div', {'class': re.compile(r'.*grid.*')}),
-                ('div', {'class': re.compile(r'.*listing.*')}),
-                ('*', {'data-id': True}),
-                ('*', {'data-car-id': True})
+                ('div', {'class': re.compile(r'.*row.*')}),
             ]
             
             for tag, attrs in selectors_to_try:
@@ -186,33 +182,44 @@ class CarScraper:
         try:
             car_data = {}
             
-            # Try to find AutoTrack ID from various sources
-            autotrack_id = None
+            # Try to find car ID from various sources for CarWorld Classics
+            car_id = None
             
             # Check data attributes
-            autotrack_id = element.get('data-vehicle-id') or element.get('data-id')
+            if hasattr(element, 'get'):
+                car_id = element.get('data-vehicle-id') or element.get('data-id') or element.get('data-car-id')
             
-            # Check href links
-            if not autotrack_id:
+            # Check href links for CarWorld Classics pattern
+            if not car_id:
                 link = element.find('a', href=True)
                 if link:
                     href = link['href']
-                    id_match = re.search(r'/voertuig/(\d+)', href)
+                    # Look for CarWorld Classics URL patterns
+                    id_match = re.search(r'/occasions-kopen/(\d+)', href) or \
+                              re.search(r'/(\d+)-', href) or \
+                              re.search(r'[/-](\d{6,})', href)
                     if id_match:
-                        autotrack_id = id_match.group(1)
+                        car_id = id_match.group(1)
             
-            # Try to extract from any text that looks like an ID
-            if not autotrack_id:
-                text = element.get_text()
-                id_match = re.search(r'\b(\d{6,})\b', text)
-                if id_match:
-                    autotrack_id = id_match.group(1)
+            # If still no ID, generate one from the URL or create a hash
+            if not car_id:
+                link = element.find('a', href=True)
+                if link and link.get('href'):
+                    # Use the full href as a unique identifier
+                    import hashlib
+                    car_id = hashlib.md5(link['href'].encode()).hexdigest()[:12]
+                else:
+                    # Try to extract from any text that looks like an ID
+                    text = element.get_text()
+                    id_match = re.search(r'\b(\d{4,})\b', text)
+                    if id_match:
+                        car_id = id_match.group(1)
             
-            if not autotrack_id:
-                logger.warning("Could not find AutoTrack ID for car element")
+            if not car_id:
+                logger.warning("Could not find car ID for car element")
                 return None
             
-            car_data['autotrack_id'] = autotrack_id
+            car_data['autotrack_id'] = car_id  # Keep the same field name for database compatibility
             
             # Extract make and model
             make_model_element = element.find('h2') or element.find('h3') or \
