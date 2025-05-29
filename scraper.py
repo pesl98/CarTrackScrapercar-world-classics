@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 class CarScraper:
     def __init__(self, database):
         self.db = database
-        self.base_url = "https://www.autotrack.nl"
-        self.target_url = "https://www.autotrack.nl/autobedrijf/carworldclassics-com/111072/voorraad"
+        self.base_url = "https://www.carworldclassics.com"
+        self.target_url = "https://www.carworldclassics.com/aanbod"
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -40,10 +40,15 @@ class CarScraper:
         current_car_ids = []
         
         try:
-            # Get all pages
+            # Get all pages - CarWorld Classics likely uses different pagination
             page = 1
             while True:
-                url = f"{self.target_url}?pageNumber={page}&pageSize=90&sortField=datumGeplaatst&sortOrder=desc"
+                # Try different URL patterns for CarWorld Classics
+                if page == 1:
+                    url = self.target_url  # First page might not need pagination
+                else:
+                    url = f"{self.target_url}?page={page}"  # Try common pagination pattern
+                
                 logger.info(f"Scraping page {page}: {url}")
                 
                 cars_on_page = self._scrape_page(url)
@@ -96,13 +101,13 @@ class CarScraper:
             # Add a delay and try to access the main page first
             time.sleep(3)
             
-            # First, try to get the main dealer page to establish session
-            main_page_url = "https://www.autotrack.nl/autobedrijf/carworldclassics-com/111072"
-            logger.info(f"First accessing main dealer page: {main_page_url}")
+            # First, try to get the main homepage to establish session
+            main_page_url = "https://www.carworldclassics.com"
+            logger.info(f"First accessing main homepage: {main_page_url}")
             main_response = self.session.get(main_page_url, timeout=30)
             
             if main_response.status_code == 200:
-                logger.info("Successfully accessed main dealer page")
+                logger.info("Successfully accessed main homepage")
                 time.sleep(2)
             
             logger.info(f"Now accessing inventory page: {url}")
@@ -115,15 +120,19 @@ class CarScraper:
             # Based on the HTML structure you showed, look for the correct selectors
             car_elements = []
             
-            # Try different selectors to find car listings
+            # Try different selectors to find car listings for CarWorld Classics
             selectors_to_try = [
-                ('div', {'data-testid': 'dealer-ads-list'}),
-                ('div', {'class': re.compile(r'.*grid.*cols.*')}),
-                ('section', {'class': re.compile(r'.*bg-base-white.*')}),
-                ('div', {'class': re.compile(r'.*flex.*items-center.*')}),
-                ('a', {'href': re.compile(r'.*/voertuig/.*')}),
-                ('div', {'data-testid': True}),
-                ('*', {'data-vehicle-id': True})
+                ('div', {'class': re.compile(r'.*car.*item.*')}),
+                ('div', {'class': re.compile(r'.*vehicle.*')}),
+                ('article', {'class': re.compile(r'.*car.*')}),
+                ('div', {'class': re.compile(r'.*product.*')}),
+                ('a', {'href': re.compile(r'.*/auto/.*')}),
+                ('a', {'href': re.compile(r'.*/car/.*')}),
+                ('a', {'href': re.compile(r'.*/detail/.*')}),
+                ('div', {'class': re.compile(r'.*grid.*')}),
+                ('div', {'class': re.compile(r'.*listing.*')}),
+                ('*', {'data-id': True}),
+                ('*', {'data-car-id': True})
             ]
             
             for tag, attrs in selectors_to_try:
