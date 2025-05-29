@@ -17,7 +17,18 @@ class CarScraper:
         self.target_url = "https://www.autotrack.nl/autobedrijf/carworldclassics-com/111072/voorraad"
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'en-US,en;q=0.9,nl;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0'
         })
     
     def scrape_cars(self):
@@ -82,23 +93,67 @@ class CarScraper:
     def _scrape_page(self, url):
         """Scrape a single page of car listings"""
         try:
+            # Add a delay and try to access the main page first
+            time.sleep(3)
+            
+            # First, try to get the main dealer page to establish session
+            main_page_url = "https://www.autotrack.nl/autobedrijf/carworldclassics-com/111072"
+            logger.info(f"First accessing main dealer page: {main_page_url}")
+            main_response = self.session.get(main_page_url, timeout=30)
+            
+            if main_response.status_code == 200:
+                logger.info("Successfully accessed main dealer page")
+                time.sleep(2)
+            
+            logger.info(f"Now accessing inventory page: {url}")
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, 'html.parser')
             cars = []
             
-            # Find car listing containers
-            car_elements = soup.find_all('div', class_=lambda x: x and 'vehicle-item' in x) or \
-                          soup.find_all('article', class_=lambda x: x and 'vehicle' in x) or \
-                          soup.find_all('div', class_=lambda x: x and 'car-item' in x)
+            # Based on the HTML structure you showed, look for the correct selectors
+            car_elements = []
             
-            # If specific selectors don't work, try more generic approach
-            if not car_elements:
-                car_elements = soup.find_all('div', attrs={'data-vehicle-id': True}) or \
-                              soup.find_all('a', href=lambda x: x and '/voertuig/' in x)
+            # Try different selectors to find car listings
+            selectors_to_try = [
+                ('div', {'data-testid': 'dealer-ads-list'}),
+                ('div', {'class': re.compile(r'.*grid.*cols.*')}),
+                ('section', {'class': re.compile(r'.*bg-base-white.*')}),
+                ('div', {'class': re.compile(r'.*flex.*items-center.*')}),
+                ('a', {'href': re.compile(r'.*/voertuig/.*')}),
+                ('div', {'data-testid': True}),
+                ('*', {'data-vehicle-id': True})
+            ]
             
-            logger.info(f"Found {len(car_elements)} car elements on page")
+            for tag, attrs in selectors_to_try:
+                car_elements = soup.find_all(tag, attrs)
+                if car_elements:
+                    logger.info(f"Found {len(car_elements)} elements using {tag} with {attrs}")
+                    break
+            
+            logger.info(f"Found {len(car_elements)} potential car elements on page")
+            
+            # Debug: log the page structure if no cars found
+            if len(car_elements) == 0:
+                logger.warning("No car elements found. Page structure analysis:")
+                # Look for any divs that might contain cars
+                all_divs = soup.find_all('div', limit=20)
+                for i, div in enumerate(all_divs):
+                    classes = div.get('class') if hasattr(div, 'get') else None
+                    if classes:
+                        logger.info(f"Div {i}: classes = {classes}")
+                
+                # Look for any links that might be cars
+                all_links = soup.find_all('a', href=True, limit=10)
+                for i, link in enumerate(all_links):
+                    href = link.get('href') if hasattr(link, 'get') else None
+                    if href:
+                        logger.info(f"Link {i}: href = {href}")
+                        
+                # Save a sample of the HTML for debugging
+                logger.info("First 500 characters of page content:")
+                logger.info(str(soup)[:500])
             
             for element in car_elements:
                 try:
@@ -113,6 +168,8 @@ class CarScraper:
             
         except requests.RequestException as e:
             logger.error(f"Request error: {str(e)}")
+            if "403" in str(e):
+                logger.error("Access forbidden - the website may be blocking automated requests")
             return []
     
     def _extract_car_data(self, element):
