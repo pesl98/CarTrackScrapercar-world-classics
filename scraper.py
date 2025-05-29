@@ -221,19 +221,36 @@ class CarScraper:
             
             car_data['autotrack_id'] = car_id  # Keep the same field name for database compatibility
             
-            # Extract make and model
-            make_model_element = element.find('h2') or element.find('h3') or \
-                               element.find(class_=lambda x: x and 'title' in x.lower()) or \
-                               element.find(class_=lambda x: x and 'name' in x.lower())
+            # Extract make and model - look for CarWorld Classics specific elements
+            make_model_element = element.find('h4') or element.find('h3') or element.find('h2') or \
+                               element.find('h5') or element.find('h6') or \
+                               element.find(class_=lambda x: x and ('title' in str(x).lower() or 'name' in str(x).lower() or 'model' in str(x).lower())) or \
+                               element.find('strong') or element.find('b')
             
-            if make_model_element:
-                make_model_text = make_model_element.get_text(strip=True)
-                parts = make_model_text.split(' ', 1)
-                car_data['make'] = parts[0] if parts else 'Unknown'
-                car_data['model'] = parts[1] if len(parts) > 1 else 'Unknown'
+            # Also try to find it in the link text
+            if not make_model_element:
+                link = element.find('a', href=True)
+                if link and link.get_text(strip=True):
+                    make_model_text = link.get_text(strip=True)
+                    if len(make_model_text) > 3:  # Avoid empty or very short texts
+                        parts = make_model_text.split(' ', 1)
+                        car_data['make'] = parts[0] if parts else 'Unknown'
+                        car_data['model'] = parts[1] if len(parts) > 1 else 'Unknown'
+                    else:
+                        car_data['make'] = 'Unknown'
+                        car_data['model'] = 'Unknown'
+                else:
+                    car_data['make'] = 'Unknown'
+                    car_data['model'] = 'Unknown'
             else:
-                car_data['make'] = 'Unknown'
-                car_data['model'] = 'Unknown'
+                make_model_text = make_model_element.get_text(strip=True)
+                if make_model_text and len(make_model_text) > 3:
+                    parts = make_model_text.split(' ', 1)
+                    car_data['make'] = parts[0] if parts else 'Unknown'
+                    car_data['model'] = parts[1] if len(parts) > 1 else 'Unknown'
+                else:
+                    car_data['make'] = 'Unknown'
+                    car_data['model'] = 'Unknown'
             
             # Extract price
             price_element = element.find(class_=lambda x: x and 'price' in x.lower()) or \
