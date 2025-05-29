@@ -53,8 +53,13 @@ class CarScraper:
                 
                 cars_on_page = self._scrape_page(url)
                 
-                if not cars_on_page:
+                if not cars_on_page or len(cars_on_page) == 0:
                     logger.info(f"No more cars found on page {page}, stopping")
+                    break
+                
+                # Also stop if we've processed too many pages (safety check)
+                if page > 20:  # Reasonable limit
+                    logger.info(f"Reached page limit ({page}), stopping")
                     break
                 
                 for car_data in cars_on_page:
