@@ -228,19 +228,32 @@ class CarScraper:
             car_data['model'] = 'Unknown'
             
             # Try to extract from URL pattern like: 43705952-porsche-911-992-2-3-6-carrera-4-gts-t-hybrid-cabrio
-            if car_url or not car_id:
-                link = element.find('a', href=True)
-                if link:
-                    href = link['href']
-                    # Extract make and model from URL structure
-                    url_match = re.search(r'/occasions-kopen/(\d+)-([^/]+)', href)
+            link = element.find('a', href=True)
+            if link:
+                href = link['href']
+                logger.info(f"Processing car URL: {href}")
+                
+                # Try multiple URL patterns for CarWorld Classics
+                url_patterns = [
+                    r'/occasions-kopen/(\d+)-([^/?]+)',  # /occasions-kopen/ID-make-model-details
+                    r'/(\d+)-([^/?]+)',                   # /ID-make-model-details
+                    r'kopen/(\d+)-([^/?]+)',             # kopen/ID-make-model-details
+                ]
+                
+                for pattern in url_patterns:
+                    url_match = re.search(pattern, href)
                     if url_match:
-                        url_parts = url_match.group(2).split('-')
+                        url_text = url_match.group(2)
+                        url_parts = url_text.split('-')
+                        logger.info(f"URL parts: {url_parts}")
+                        
                         if len(url_parts) >= 2:
                             car_data['make'] = url_parts[0].capitalize()
                             # Join remaining parts as model, but limit to reasonable length
                             model_parts = url_parts[1:6]  # Take up to 5 parts for model
-                            car_data['model'] = ' '.join(model_parts).replace('-', ' ').title()
+                            car_data['model'] = ' '.join(model_parts).title()
+                            logger.info(f"Extracted from URL - Make: {car_data['make']}, Model: {car_data['model']}")
+                            break
             
             # If URL extraction didn't work, try HTML elements
             if car_data['make'] == 'Unknown':
