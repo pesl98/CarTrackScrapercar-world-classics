@@ -41,6 +41,7 @@ class CarScraper:
         
         try:
             # Get all pages - CarWorld Classics likely uses different pagination
+            seen_car_ids = set()  # Track cars we've already seen
             page = 1
             while True:
                 # Try different URL patterns for CarWorld Classics
@@ -55,6 +56,17 @@ class CarScraper:
                 
                 if not cars_on_page or len(cars_on_page) == 0:
                     logger.info(f"No more cars found on page {page}, stopping")
+                    break
+                
+                # Check for duplicates - if all cars are duplicates, we're done
+                new_cars_on_page = 0
+                for car_data in cars_on_page:
+                    if car_data['autotrack_id'] not in seen_car_ids:
+                        new_cars_on_page += 1
+                        seen_car_ids.add(car_data['autotrack_id'])
+                
+                if new_cars_on_page == 0:
+                    logger.info(f"No new cars found on page {page} (all duplicates), stopping pagination")
                     break
                 
                 # Also stop if we've processed too many pages (safety check)
