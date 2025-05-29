@@ -189,12 +189,14 @@ class CarScraper:
             if hasattr(element, 'get'):
                 car_id = element.get('data-vehicle-id') or element.get('data-id') or element.get('data-car-id')
             
-            # Check href links for CarWorld Classics pattern
+            # Check href links for CarWorld Classics pattern and extract car info
+            car_url = None
             if not car_id:
                 link = element.find('a', href=True)
                 if link:
                     href = link['href']
-                    # Look for CarWorld Classics URL patterns
+                    car_url = href  # Store the URL for later use
+                    # Look for CarWorld Classics URL patterns like: 43705952-porsche-911-992-2-3-6-carrera-4-gts-t-hybrid-cabrio
                     id_match = re.search(r'/occasions-kopen/(\d+)', href) or \
                               re.search(r'/(\d+)-', href) or \
                               re.search(r'[/-](\d{6,})', href)
@@ -221,36 +223,48 @@ class CarScraper:
             
             car_data['autotrack_id'] = car_id  # Keep the same field name for database compatibility
             
-            # Extract make and model - look for CarWorld Classics specific elements
-            make_model_element = element.find('h4') or element.find('h3') or element.find('h2') or \
-                               element.find('h5') or element.find('h6') or \
-                               element.find(class_=lambda x: x and ('title' in str(x).lower() or 'name' in str(x).lower() or 'model' in str(x).lower())) or \
-                               element.find('strong') or element.find('b')
+            # Extract make and model from URL pattern first (most reliable for CarWorld Classics)
+            car_data['make'] = 'Unknown'
+            car_data['model'] = 'Unknown'
             
-            # Also try to find it in the link text
-            if not make_model_element:
+            # Try to extract from URL pattern like: 43705952-porsche-911-992-2-3-6-carrera-4-gts-t-hybrid-cabrio
+            if car_url or not car_id:
                 link = element.find('a', href=True)
-                if link and link.get_text(strip=True):
-                    make_model_text = link.get_text(strip=True)
-                    if len(make_model_text) > 3:  # Avoid empty or very short texts
+                if link:
+                    href = link['href']
+                    # Extract make and model from URL structure
+                    url_match = re.search(r'/occasions-kopen/(\d+)-([^/]+)', href)
+                    if url_match:
+                        url_parts = url_match.group(2).split('-')
+                        if len(url_parts) >= 2:
+                            car_data['make'] = url_parts[0].capitalize()
+                            # Join remaining parts as model, but limit to reasonable length
+                            model_parts = url_parts[1:6]  # Take up to 5 parts for model
+                            car_data['model'] = ' '.join(model_parts).replace('-', ' ').title()
+            
+            # If URL extraction didn't work, try HTML elements
+            if car_data['make'] == 'Unknown':
+                make_model_element = element.find('h4') or element.find('h3') or element.find('h2') or \
+                                   element.find('h5') or element.find('h6') or \
+                                   element.find(class_=lambda x: x and ('title' in str(x).lower() or 'name' in str(x).lower() or 'model' in str(x).lower())) or \
+                                   element.find('strong') or element.find('b')
+                
+                if make_model_element:
+                    make_model_text = make_model_element.get_text(strip=True)
+                    if make_model_text and len(make_model_text) > 3:
                         parts = make_model_text.split(' ', 1)
                         car_data['make'] = parts[0] if parts else 'Unknown'
                         car_data['model'] = parts[1] if len(parts) > 1 else 'Unknown'
-                    else:
-                        car_data['make'] = 'Unknown'
-                        car_data['model'] = 'Unknown'
-                else:
-                    car_data['make'] = 'Unknown'
-                    car_data['model'] = 'Unknown'
-            else:
-                make_model_text = make_model_element.get_text(strip=True)
-                if make_model_text and len(make_model_text) > 3:
-                    parts = make_model_text.split(' ', 1)
-                    car_data['make'] = parts[0] if parts else 'Unknown'
-                    car_data['model'] = parts[1] if len(parts) > 1 else 'Unknown'
-                else:
-                    car_data['make'] = 'Unknown'
-                    car_data['model'] = 'Unknown'
+                
+                # Also try to find it in the link text as fallback
+                if car_data['make'] == 'Unknown':
+                    link = element.find('a', href=True)
+                    if link and link.get_text(strip=True):
+                        make_model_text = link.get_text(strip=True)
+                        if len(make_model_text) > 3:
+                            parts = make_model_text.split(' ', 1)
+                            car_data['make'] = parts[0] if parts else 'Unknown'
+                            car_data['model'] = parts[1] if len(parts) > 1 else 'Unknown'
             
             # Extract price
             price_element = element.find(class_=lambda x: x and 'price' in x.lower()) or \
