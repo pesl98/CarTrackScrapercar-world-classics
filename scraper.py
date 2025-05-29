@@ -226,34 +226,38 @@ class CarScraper:
             # Extract make and model from URL pattern first (most reliable for CarWorld Classics)
             car_data['make'] = 'Unknown'
             car_data['model'] = 'Unknown'
+            car_data['source_url'] = ''
             
             # Try to extract from URL pattern like: 43705952-porsche-911-992-2-3-6-carrera-4-gts-t-hybrid-cabrio
             link = element.find('a', href=True)
             if link:
                 href = link['href']
-                logger.info(f"Processing car URL: {href}")
+                car_data['source_url'] = href  # Store the full URL
                 
-                # Try multiple URL patterns for CarWorld Classics
-                url_patterns = [
-                    r'/occasions-kopen/(\d+)-([^/?]+)',  # /occasions-kopen/ID-make-model-details
-                    r'/(\d+)-([^/?]+)',                   # /ID-make-model-details
-                    r'kopen/(\d+)-([^/?]+)',             # kopen/ID-make-model-details
-                ]
+                # Use the pattern we know works from our test
+                url_match = re.search(r'/occasions-kopen/(\d+)-([^/?]+)', href)
+                if url_match:
+                    url_text = url_match.group(2)
+                    url_parts = url_text.split('-')
+                    
+                    if len(url_parts) >= 2:
+                        car_data['make'] = url_parts[0].capitalize()
+                        # Join remaining parts as model, but limit to reasonable length
+                        model_parts = url_parts[1:5]  # Take up to 4 parts for model
+                        car_data['model'] = ' '.join(model_parts).title()
+                        logger.info(f"Extracted from URL - Make: {car_data['make']}, Model: {car_data['model']}")
                 
-                for pattern in url_patterns:
-                    url_match = re.search(pattern, href)
-                    if url_match:
-                        url_text = url_match.group(2)
-                        url_parts = url_text.split('-')
-                        logger.info(f"URL parts: {url_parts}")
-                        
-                        if len(url_parts) >= 2:
-                            car_data['make'] = url_parts[0].capitalize()
-                            # Join remaining parts as model, but limit to reasonable length
-                            model_parts = url_parts[1:6]  # Take up to 5 parts for model
-                            car_data['model'] = ' '.join(model_parts).title()
-                            logger.info(f"Extracted from URL - Make: {car_data['make']}, Model: {car_data['model']}")
-                            break
+                # If URL extraction didn't work, try getting from link text as fallback
+                if car_data['make'] == 'Unknown':
+                    link_text = link.get_text(strip=True)
+                    if link_text:
+                        # Extract from text like "Porsche 911992.2 - 3.6 CARRERA 4 GTS T-HYBRID CABRIO"
+                        text_parts = link_text.split('€')[0].strip()  # Remove price part
+                        if ' ' in text_parts:
+                            parts = text_parts.split(' ', 1)
+                            car_data['make'] = parts[0].strip()
+                            car_data['model'] = parts[1].split('-')[0].strip() if '-' in parts[1] else parts[1].strip()
+                            logger.info(f"Extracted from text - Make: {car_data['make']}, Model: {car_data['model']}")
             
             # If URL extraction didn't work, try HTML elements
             if car_data['make'] == 'Unknown':

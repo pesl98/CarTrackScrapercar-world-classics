@@ -32,6 +32,7 @@ class Database:
                 fuel_type TEXT,
                 description TEXT,
                 image_url TEXT,
+                source_url TEXT,
                 current_price INTEGER NOT NULL,
                 first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
