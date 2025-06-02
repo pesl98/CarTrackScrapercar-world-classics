@@ -1,8 +1,10 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_file, make_response
 from database import Database
 from scraper import CarScraper
 from scheduler import start_scheduler
 import json
+import csv
+import io
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
@@ -66,6 +68,58 @@ def manual_scrape():
 def car_detail(car_id):
     """Car detail page"""
     return render_template('car_detail.html', car_id=car_id)
+
+@app.route('/api/export/csv')
+def export_cars_csv():
+    """Export all cars to CSV file"""
+    try:
+        # Get all cars from database
+        cars = db.get_cars_with_filters(page=1, per_page=10000, search='', status='all')
+        
+        # Create CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow([
+            'ID', 'Make', 'Model', 'Year', 'Mileage', 'Fuel Type', 
+            'Current Price', 'First Seen', 'Last Seen', 'Is Sold', 
+            'Sold Date', 'Days on Market', 'Source URL', 'Description'
+        ])
+        
+        # Write car data
+        for car in cars['cars']:
+            writer.writerow([
+                car['id'],
+                car['make'],
+                car['model'],
+                car['year'] or '',
+                car['mileage'] or '',
+                car['fuel_type'] or '',
+                car['current_price'],
+                car['first_seen'],
+                car['last_seen'],
+                'Yes' if car['is_sold'] else 'No',
+                car['sold_date'] or '',
+                car['days_on_market'] or '',
+                car.get('source_url', ''),
+                car['description'] or ''
+            ])
+        
+        # Create response
+        output.seek(0)
+        
+        # Generate filename with current date
+        filename = f"car_tracker_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        
+        response = make_response(output.getvalue())
+        response.headers['Content-Type'] = 'text/csv'
+        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+        
+        return response
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.errorhandler(404)
 def not_found(error):

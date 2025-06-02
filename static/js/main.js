@@ -314,6 +314,11 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Download CSV export
+function downloadCSV() {
+    window.location.href = '/api/export/csv';
+}
+
 // Auto-refresh data every 5 minutes
 setInterval(() => {
     loadDashboardStats();
