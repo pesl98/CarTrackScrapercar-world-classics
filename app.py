@@ -143,7 +143,7 @@ def get_price_changes():
                 c.autotrack_id,
                 c.current_price,
                 c.sold_date,
-                c.days_on_market
+                CAST((julianday(c.sold_date) - julianday(c.first_seen)) AS INTEGER) as days_on_market
             FROM cars c
             WHERE c.is_sold = 1 AND c.sold_date IS NOT NULL
             ORDER BY c.sold_date DESC
