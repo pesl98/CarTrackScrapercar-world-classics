@@ -326,15 +326,18 @@ async function showPriceChanges() {
     
     try {
         const response = await fetch('/api/price-changes');
-        const priceChanges = await response.json();
+        const data = await response.json();
         
         let content = '';
         
-        if (priceChanges.length === 0) {
-            content = '<p class="text-center text-muted">No price changes recorded yet.</p>';
+        // Price Changes Section
+        content += '<h6><i class="fas fa-chart-line me-2"></i>Price Changes</h6>';
+        
+        if (data.price_changes.length === 0) {
+            content += '<p class="text-muted">No price changes recorded yet.</p>';
         } else {
-            content = `
-                <div class="table-responsive">
+            content += `
+                <div class="table-responsive mb-4">
                     <table class="table table-striped">
                         <thead>
                             <tr>
@@ -349,7 +352,7 @@ async function showPriceChanges() {
                         <tbody>
             `;
             
-            priceChanges.forEach(change => {
+            data.price_changes.forEach(change => {
                 const changeAmount = change.price_difference || 0;
                 const changePercent = change.percentage_change || 0;
                 const changeClass = changeAmount > 0 ? 'text-success' : changeAmount < 0 ? 'text-danger' : 'text-muted';
@@ -370,6 +373,43 @@ async function showPriceChanges() {
                             ${changePercent > 0 ? '+' : ''}${changePercent.toFixed(1)}%
                         </td>
                         <td>${new Date(change.recorded_at).toLocaleDateString()}</td>
+                    </tr>
+                `;
+            });
+            
+            content += '</tbody></table></div>';
+        }
+        
+        // Recently Sold Cars Section
+        content += '<h6><i class="fas fa-handshake me-2"></i>Recently Sold Cars</h6>';
+        
+        if (data.sold_cars.length === 0) {
+            content += '<p class="text-muted">No cars marked as sold yet.</p>';
+        } else {
+            content += `
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Car</th>
+                                <th>Final Price</th>
+                                <th>Days on Market</th>
+                                <th>Sold Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            data.sold_cars.forEach(car => {
+                content += `
+                    <tr>
+                        <td>
+                            <strong>${escapeHtml(car.make)} ${escapeHtml(car.model)}</strong><br>
+                            <small class="text-muted">ID: ${car.autotrack_id}</small>
+                        </td>
+                        <td>€${formatNumber(car.current_price)}</td>
+                        <td>${car.days_on_market || 'N/A'} days</td>
+                        <td>${new Date(car.sold_date).toLocaleDateString()}</td>
                     </tr>
                 `;
             });

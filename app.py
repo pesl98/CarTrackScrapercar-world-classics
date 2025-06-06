@@ -76,21 +76,27 @@ def get_price_changes():
         conn = db.get_connection()
         cursor = conn.cursor()
         
-        # Get recent price changes with car details
+        # Get recent price changes with car details - only show meaningful changes
         cursor.execute('''
-            SELECT 
-                ph.id,
-                ph.price,
-                ph.recorded_at,
-                c.id as car_id,
-                c.make,
-                c.model,
-                c.autotrack_id,
-                c.current_price,
-                LAG(ph.price) OVER (PARTITION BY ph.car_id ORDER BY ph.recorded_at) as previous_price
-            FROM price_history ph
-            JOIN cars c ON ph.car_id = c.id
-            ORDER BY ph.recorded_at DESC
+            WITH price_changes_with_prev AS (
+                SELECT 
+                    ph.id,
+                    ph.price,
+                    ph.recorded_at,
+                    c.id as car_id,
+                    c.make,
+                    c.model,
+                    c.autotrack_id,
+                    c.current_price,
+                    c.is_sold,
+                    c.sold_date,
+                    LAG(ph.price) OVER (PARTITION BY ph.car_id ORDER BY ph.recorded_at) as previous_price
+                FROM price_history ph
+                JOIN cars c ON ph.car_id = c.id
+            )
+            SELECT * FROM price_changes_with_prev
+            WHERE (previous_price IS NOT NULL AND previous_price != price AND price > 0 AND previous_price > 0)
+            ORDER BY recorded_at DESC
             LIMIT 50
         ''')
         
@@ -105,7 +111,9 @@ def get_price_changes():
                 'model': row[5],
                 'autotrack_id': row[6],
                 'current_price': row[7],
-                'previous_price': row[8]
+                'is_sold': row[8],
+                'sold_date': row[9],
+                'previous_price': row[10]
             }
             
             # Calculate price difference
@@ -118,8 +126,39 @@ def get_price_changes():
                 
             price_changes.append(change_data)
         
+        # Also get recently sold cars
+        cursor.execute('''
+            SELECT 
+                c.id,
+                c.make,
+                c.model,
+                c.autotrack_id,
+                c.current_price,
+                c.sold_date,
+                c.days_on_market
+            FROM cars c
+            WHERE c.is_sold = 1 AND c.sold_date IS NOT NULL
+            ORDER BY c.sold_date DESC
+            LIMIT 20
+        ''')
+        
+        sold_cars = []
+        for row in cursor.fetchall():
+            sold_cars.append({
+                'id': row[0],
+                'make': row[1],
+                'model': row[2],
+                'autotrack_id': row[3],
+                'current_price': row[4],
+                'sold_date': row[5],
+                'days_on_market': row[6]
+            })
+        
         conn.close()
-        return jsonify(price_changes)
+        return jsonify({
+            'price_changes': price_changes,
+            'sold_cars': sold_cars
+        })
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
