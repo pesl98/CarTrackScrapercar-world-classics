@@ -78,25 +78,33 @@ def get_price_changes():
         
         # Get recent price changes with car details - only show meaningful changes
         cursor.execute('''
-            WITH price_changes_with_prev AS (
-                SELECT 
-                    ph.id,
-                    ph.price,
-                    ph.recorded_at,
-                    c.id as car_id,
-                    c.make,
-                    c.model,
-                    c.autotrack_id,
-                    c.current_price,
-                    c.is_sold,
-                    c.sold_date,
-                    LAG(ph.price) OVER (PARTITION BY ph.car_id ORDER BY ph.recorded_at) as previous_price
-                FROM price_history ph
-                JOIN cars c ON ph.car_id = c.id
-            )
-            SELECT * FROM price_changes_with_prev
-            WHERE (previous_price IS NOT NULL AND previous_price != price AND price > 0 AND previous_price > 0)
-            ORDER BY recorded_at DESC
+            SELECT 
+                ph1.id,
+                ph1.price,
+                ph1.recorded_at,
+                c.id as car_id,
+                c.make,
+                c.model,
+                c.autotrack_id,
+                c.current_price,
+                c.is_sold,
+                c.sold_date,
+                ph2.price as previous_price
+            FROM price_history ph1
+            JOIN cars c ON ph1.car_id = c.id
+            LEFT JOIN price_history ph2 ON ph1.car_id = ph2.car_id 
+                AND ph2.recorded_at < ph1.recorded_at
+                AND ph2.id = (
+                    SELECT MAX(ph3.id) 
+                    FROM price_history ph3 
+                    WHERE ph3.car_id = ph1.car_id 
+                    AND ph3.recorded_at < ph1.recorded_at
+                )
+            WHERE ph2.price IS NOT NULL 
+                AND ph2.price != ph1.price 
+                AND ph1.price > 0 
+                AND ph2.price > 0
+            ORDER BY ph1.recorded_at DESC
             LIMIT 50
         ''')
         
