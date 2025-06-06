@@ -69,6 +69,61 @@ def car_detail(car_id):
     """Car detail page"""
     return render_template('car_detail.html', car_id=car_id)
 
+@app.route('/api/price-changes')
+def get_price_changes():
+    """Get recent price changes"""
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        # Get recent price changes with car details
+        cursor.execute('''
+            SELECT 
+                ph.id,
+                ph.price,
+                ph.recorded_at,
+                c.id as car_id,
+                c.make,
+                c.model,
+                c.autotrack_id,
+                c.current_price,
+                LAG(ph.price) OVER (PARTITION BY ph.car_id ORDER BY ph.recorded_at) as previous_price
+            FROM price_history ph
+            JOIN cars c ON ph.car_id = c.id
+            ORDER BY ph.recorded_at DESC
+            LIMIT 50
+        ''')
+        
+        price_changes = []
+        for row in cursor.fetchall():
+            change_data = {
+                'id': row[0],
+                'price': row[1],
+                'recorded_at': row[2],
+                'car_id': row[3],
+                'make': row[4],
+                'model': row[5],
+                'autotrack_id': row[6],
+                'current_price': row[7],
+                'previous_price': row[8]
+            }
+            
+            # Calculate price difference
+            if change_data['previous_price']:
+                change_data['price_difference'] = change_data['price'] - change_data['previous_price']
+                change_data['percentage_change'] = ((change_data['price'] - change_data['previous_price']) / change_data['previous_price']) * 100
+            else:
+                change_data['price_difference'] = 0
+                change_data['percentage_change'] = 0
+                
+            price_changes.append(change_data)
+        
+        conn.close()
+        return jsonify(price_changes)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/export/csv')
 def export_cars_csv():
     """Export all cars to CSV file"""

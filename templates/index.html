@@ -93,7 +93,7 @@
                 </div>
             </div>
             <div class="col-md-2">
-                <div class="card bg-warning text-white">
+                <div class="card bg-warning text-white" style="cursor: pointer;" onclick="showPriceChanges()">
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
@@ -207,6 +207,33 @@
                             </ul>
                         </nav>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Price Changes Modal -->
+    <div class="modal fade" id="priceChangesModal" tabindex="-1" aria-labelledby="priceChangesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="priceChangesModalLabel">
+                        <i class="fas fa-chart-line me-2"></i>Recent Price Changes
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="priceChangesContent">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading price changes...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>

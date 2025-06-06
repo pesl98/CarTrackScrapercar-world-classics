@@ -319,6 +319,72 @@ function downloadCSV() {
     window.location.href = '/api/export/csv';
 }
 
+// Show price changes modal
+async function showPriceChanges() {
+    const modal = new bootstrap.Modal(document.getElementById('priceChangesModal'));
+    modal.show();
+    
+    try {
+        const response = await fetch('/api/price-changes');
+        const priceChanges = await response.json();
+        
+        let content = '';
+        
+        if (priceChanges.length === 0) {
+            content = '<p class="text-center text-muted">No price changes recorded yet.</p>';
+        } else {
+            content = `
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Car</th>
+                                <th>New Price</th>
+                                <th>Previous Price</th>
+                                <th>Change</th>
+                                <th>Percentage</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            priceChanges.forEach(change => {
+                const changeAmount = change.price_difference || 0;
+                const changePercent = change.percentage_change || 0;
+                const changeClass = changeAmount > 0 ? 'text-success' : changeAmount < 0 ? 'text-danger' : 'text-muted';
+                const changeIcon = changeAmount > 0 ? '↗' : changeAmount < 0 ? '↘' : '→';
+                
+                content += `
+                    <tr>
+                        <td>
+                            <strong>${escapeHtml(change.make)} ${escapeHtml(change.model)}</strong><br>
+                            <small class="text-muted">ID: ${change.autotrack_id}</small>
+                        </td>
+                        <td>€${formatNumber(change.price)}</td>
+                        <td>€${formatNumber(change.previous_price || 0)}</td>
+                        <td class="${changeClass}">
+                            ${changeIcon} €${formatNumber(Math.abs(changeAmount))}
+                        </td>
+                        <td class="${changeClass}">
+                            ${changePercent > 0 ? '+' : ''}${changePercent.toFixed(1)}%
+                        </td>
+                        <td>${new Date(change.recorded_at).toLocaleDateString()}</td>
+                    </tr>
+                `;
+            });
+            
+            content += '</tbody></table></div>';
+        }
+        
+        document.getElementById('priceChangesContent').innerHTML = content;
+        
+    } catch (error) {
+        document.getElementById('priceChangesContent').innerHTML = 
+            '<p class="text-center text-danger">Error loading price changes.</p>';
+    }
+}
+
 // Auto-refresh data every 5 minutes
 setInterval(() => {
     loadDashboardStats();
