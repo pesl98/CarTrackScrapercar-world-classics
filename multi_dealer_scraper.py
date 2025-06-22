@@ -176,83 +176,152 @@ class KoenExclusiefScraper(BaseDealerScraper):
         super().__init__("KoenExclusief", "https://koenexclusief.nl")
     
     def get_inventory_url(self, page: int = 1) -> str:
+        # Koen Exclusief uses different URL structure
         if page == 1:
             return f"{self.base_url}/aanbod"
         return f"{self.base_url}/aanbod?page={page}"
     
     def find_car_elements(self, soup: BeautifulSoup) -> List:
-        # Try multiple possible selectors for Koen Exclusief
-        selectors = [
-            'div.car-item',
-            'div.vehicle-item', 
-            'div.listing-item',
-            'div[class*="car"]',
-            'div[class*="vehicle"]',
-            'div[class*="listing"]',
-            'article',
-            'div.product'
+        # Based on analysis, Koen Exclusief uses JavaScript to load cars
+        # Look for the container that would hold car listings
+        
+        # Check if they have cars ("0 Occasions" indicates no inventory)
+        occasions_text = soup.get_text()
+        if "0 Occasions" in occasions_text:
+            logger.info("Koen Exclusief currently has 0 cars in inventory")
+            return []
+        
+        # Look for car listing containers when they have inventory
+        selectors_to_try = [
+            'div.occasion-item',
+            'div.car-listing',
+            'div.vehicle-card',
+            'div.porsche-item',
+            'div[class*="occasion"]',
+            'div[class*="auto"]',
+            'div[class*="car-"]',
+            'article.car',
+            'div.product-item'
         ]
         
-        for selector in selectors:
+        for selector in selectors_to_try:
             elements = soup.select(selector)
-            if elements and len(elements) > 2:  # More than just filters/headers
-                logger.info(f"Using selector '{selector}' for Koen Exclusief")
+            if elements and len(elements) > 0:
+                logger.info(f"Found {len(elements)} car elements using selector: {selector}")
                 return elements
         
-        # Fallback: look for divs with car images
-        img_elements = soup.find_all('img')
+        # Fallback: look for elements containing car-specific content
         car_containers = []
-        for img in img_elements:
-            src = img.get('src', '').lower()
-            alt = img.get('alt', '').lower()
-            if any(keyword in src or keyword in alt for keyword in ['car', 'auto', 'vehicle', 'porsche', 'bmw']):
-                container = img.find_parent(['div', 'article', 'section'])
-                if container and container not in car_containers:
-                    car_containers.append(container)
+        all_divs = soup.find_all('div')
         
-        return car_containers[:20]  # Limit to reasonable number
+        for div in all_divs:
+            div_text = div.get_text().lower()
+            # Look for divs that contain car-specific information
+            if (any(model in div_text for model in ['911', 'carrera', 'turbo', 'cayenne', 'macan', 'panamera']) and
+                any(indicator in div_text for indicator in ['€', 'km', 'jaar', 'bouwjaar']) and
+                len(div_text.strip()) > 100):  # Substantial content
+                car_containers.append(div)
+        
+        logger.info(f"Fallback found {len(car_containers)} potential car containers")
+        return car_containers[:20]
     
     def extract_car_data(self, element) -> Optional[Dict]:
         try:
-            # For now, create a placeholder structure for Koen Exclusief
-            # This would need to be customized based on their actual HTML structure
+            # Extract text content for analysis
+            text_content = element.get_text()
+            
+            # Generate ID from element content
+            element_hash = hash(str(element)[:200]) % 1000000
+            car_id = f"koen_{element_hash}"
             
             car_data = {
-                'autotrack_id': f"koen_{hash(str(element)[:100]) % 100000}",  # Temporary ID
-                'make': 'Porsche',  # Since they specialize in Porsche
+                'autotrack_id': car_id,
+                'make': 'Porsche',  # Koen Exclusief specializes in Porsche
                 'model': 'Unknown',
                 'year': None,
                 'mileage': None,
-                'fuel_type': None,
+                'fuel_type': 'Benzine',  # Default for Porsche
                 'description': '',
                 'image_url': None,
                 'source_url': '',
                 'price': 0
             }
             
-            # Extract text content for analysis
-            text_content = element.get_text()
+            # Extract Porsche model from text
+            porsche_models = ['911', 'Carrera', 'Turbo', 'GT3', 'GT2', 'Cayenne', 'Macan', 'Panamera', 'Taycan', 'Boxster', 'Cayman']
+            for model in porsche_models:
+                if model.lower() in text_content.lower():
+                    car_data['model'] = model
+                    break
             
-            # Try to extract price
-            price_match = re.search(r'€\s*([\d.,]+)', text_content.replace('.', '').replace(',', ''))
-            if price_match:
+            # Extract price (€ format)
+            price_patterns = [
+                r'€\s*([\d.,]+)',
+                r'([\d.,]+)\s*€',
+                r'(\d{5,})',  # At least 5 digits for car prices
+            ]
+            
+            for pattern in price_patterns:
+                price_match = re.search(pattern, text_content.replace('.', '').replace(',', ''))
+                if price_match:
+                    try:
+                        car_data['price'] = int(price_match.group(1))
+                        if car_data['price'] > 10000:  # Reasonable minimum
+                            break
+                    except ValueError:
+                        continue
+            
+            # Extract year
+            year_match = re.search(r'(19|20)\d{2}', text_content)
+            if year_match:
                 try:
-                    car_data['price'] = int(price_match.group(1))
-                except:
+                    car_data['year'] = int(year_match.group(0))
+                except ValueError:
                     pass
             
-            # Extract link
-            link = element.find('a', href=True)
-            if link:
-                car_data['source_url'] = link['href']
+            # Extract mileage (km)
+            mileage_patterns = [
+                r'([\d.,]+)\s*km',
+                r'([\d.,]+)\s*KM',
+                r'([\d.,]+)\s*kilometer'
+            ]
+            
+            for pattern in mileage_patterns:
+                mileage_match = re.search(pattern, text_content.replace('.', '').replace(',', ''))
+                if mileage_match:
+                    try:
+                        car_data['mileage'] = int(mileage_match.group(1))
+                        break
+                    except ValueError:
+                        continue
             
             # Extract image
             img = element.find('img')
             if img and img.get('src'):
-                car_data['image_url'] = img['src']
+                src = img['src']
+                # Handle relative URLs
+                if src.startswith('/'):
+                    car_data['image_url'] = f"{self.base_url}{src}"
+                else:
+                    car_data['image_url'] = src
             
-            # Only return if we found a reasonable price
-            return car_data if car_data['price'] > 50000 else None  # Reasonable minimum for luxury cars
+            # Extract link for source URL
+            link = element.find('a', href=True)
+            if link:
+                href = link['href']
+                if href.startswith('/'):
+                    car_data['source_url'] = f"{self.base_url}{href}"
+                else:
+                    car_data['source_url'] = href
+            
+            # Set description from the clean text
+            car_data['description'] = text_content.strip()[:500]
+            
+            # Only return if we have valid data
+            if car_data['price'] > 0 and car_data['model'] != 'Unknown':
+                return car_data
+            
+            return None
             
         except Exception as e:
             logger.error(f"Error extracting Koen Exclusief car data: {str(e)}")
