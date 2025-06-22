@@ -214,143 +214,234 @@ class KoenExclusiefScraper(BaseDealerScraper):
         return []
     
     def find_car_elements(self, soup: BeautifulSoup) -> List:
-        # Check if they have cars ("0 Occasions" indicates no inventory)
-        occasions_text = soup.get_text()
-        if "0 Occasions" in occasions_text:
-            logger.info("Koen Exclusief currently has 0 cars in inventory")
-            return []
-        
-        # Try AJAX endpoints first
-        session = requests.Session()
-        session.headers.update(self.headers)
-        
-        ajax_data = self._try_ajax_endpoints(session)
-        if ajax_data:
-            return ajax_data  # Return raw data for AJAX processing
-        
-        # Look for car listing containers in HTML
-        selectors_to_try = [
-            'div.car-item',
-            'div.vehicle-item',
-            'div.occasion-item',
-            'div.auto-item',
-            'div[class*="car"]',
-            'div[class*="vehicle"]',
-            'div[class*="occasion"]',
-            'div[class*="auto"]',
-            'article.car',
-            'div.listing-item'
+        # Based on screenshot, look for specific KoenExclusief structure
+        # Primary selectors from actual HTML structure
+        primary_selectors = [
+            'div.each_product_div',
+            'div[class*="each_car_cls"]',
+            'div.col-lg-6.each_product_div',
         ]
         
-        for selector in selectors_to_try:
+        car_elements = []
+        for selector in primary_selectors:
             elements = soup.select(selector)
-            if elements and len(elements) > 0:
-                # Filter out navigation/header elements
-                car_elements = []
+            if elements:
+                # Filter for actual car listings (must contain Porsche content)
+                valid_cars = []
                 for elem in elements:
                     elem_text = elem.get_text().lower()
-                    if (any(indicator in elem_text for indicator in ['€', 'km', 'jaar']) and
-                        len(elem_text.strip()) > 50):
-                        car_elements.append(elem)
+                    
+                    # Check for car indicators from screenshot structure
+                    has_car_link = elem.find('a', href=re.compile(r'/occasions-kopen/.*porsche.*', re.I))
+                    has_car_image = elem.find('img', src=re.compile(r'/webservices/feed_images/'))
+                    has_porsche_text = any(term in elem_text for term in ['porsche', '911', 'carrera', 'turbo'])
+                    
+                    if has_car_link or has_car_image or has_porsche_text:
+                        valid_cars.append(elem)
                 
-                if car_elements:
-                    logger.info(f"Found {len(car_elements)} valid car elements using: {selector}")
-                    return car_elements
+                if valid_cars:
+                    logger.info(f"Found {len(valid_cars)} car elements using selector: {selector}")
+                    return valid_cars
         
-        # Enhanced fallback: look for structured car data
+        # Secondary approach: look for feed_images (car photos)
+        feed_images = soup.find_all('img', src=re.compile(r'/webservices/feed_images/\d+/'))
+        if feed_images:
+            logger.info(f"Found {len(feed_images)} car images, extracting containers")
+            car_containers = []
+            
+            for img in feed_images:
+                # Find parent container that holds the car data
+                container = img.find_parent('div', class_=re.compile(r'.*product.*|.*car.*|.*each.*'))
+                if container and container not in car_containers:
+                    car_containers.append(container)
+            
+            if car_containers:
+                logger.info(f"Extracted {len(car_containers)} car containers from images")
+                return car_containers
+        
+        # Tertiary approach: look for occasions links
+        occasions_links = soup.find_all('a', href=re.compile(r'/occasions-kopen/.*porsche.*', re.I))
+        if occasions_links:
+            logger.info(f"Found {len(occasions_links)} occasions links")
+            car_containers = []
+            
+            for link in occasions_links:
+                # Find parent container
+                container = link.find_parent(['div'], class_=True)
+                if container and container not in car_containers:
+                    car_containers.append(container)
+            
+            if car_containers:
+                logger.info(f"Extracted {len(car_containers)} car containers from links")
+                return car_containers
+        
+        # Final fallback: look for any divs containing Porsche and price info
+        all_divs = soup.find_all('div')
         car_containers = []
         
-        # Look for elements with car-specific data attributes
-        data_elements = soup.find_all(attrs=lambda x: x and any(
-            k.startswith('data-') and any(term in k.lower() for term in ['car', 'auto', 'vehicle'])
-            for k in x.keys()
-        ))
-        
-        for elem in data_elements:
-            elem_text = elem.get_text().lower()
-            if (any(model in elem_text for model in ['porsche', '911', 'carrera', 'turbo', 'cayenne', 'macan']) and
-                any(indicator in elem_text for indicator in ['€', 'km']) and
-                len(elem_text.strip()) > 80):
-                car_containers.append(elem)
-        
-        if car_containers:
-            logger.info(f"Found {len(car_containers)} cars via data attributes")
-            return car_containers
-        
-        # Final fallback: comprehensive content analysis
-        all_elements = soup.find_all(['div', 'article', 'section'])
-        for elem in all_elements:
-            elem_text = elem.get_text().lower()
+        for div in all_divs:
+            div_text = div.get_text().lower()
+            div_classes = ' '.join(div.get('class', []))
             
-            # More comprehensive Porsche model detection
-            porsche_indicators = ['porsche', '911', 'carrera', 'turbo', 'gt3', 'gt2', 'cayenne', 'macan', 'panamera', 'taycan', 'boxster', 'cayman']
-            price_indicators = ['€', 'eur', 'euro']
-            tech_indicators = ['km', 'kilometer', 'jaar', 'bouwjaar', 'pk', 'kw', 'benzine', 'diesel']
+            # Check for Porsche content and pricing
+            has_porsche = any(model in div_text for model in ['porsche', '911', 'carrera', 'turbo', 'cayenne', 'macan'])
+            has_price_info = any(indicator in div_text for indicator in ['€', 'eur', 'carrera', 'achterassturing'])
+            has_reasonable_content = len(div_text.strip()) > 50
             
-            if (any(model in elem_text for model in porsche_indicators) and
-                any(price in elem_text for price in price_indicators) and
-                any(tech in elem_text for tech in tech_indicators) and
-                len(elem_text.strip()) > 100):
-                car_containers.append(elem)
+            if has_porsche and has_price_info and has_reasonable_content:
+                car_containers.append(div)
         
-        logger.info(f"Final fallback found {len(car_containers)} potential car containers")
-        return car_containers[:15]
+        # Remove duplicates and nested containers
+        unique_containers = []
+        for container in car_containers:
+            # Check if this container is not contained within another
+            is_nested = any(container in other.descendants for other in unique_containers)
+            if not is_nested:
+                unique_containers.append(container)
+        
+        logger.info(f"Final fallback found {len(unique_containers)} car containers")
+        return unique_containers[:20]
     
     def extract_car_data(self, element) -> Optional[Dict]:
         try:
-            # Extract text content for analysis
+            # Handle AJAX data (dict) vs HTML elements
+            if isinstance(element, dict):
+                return self._extract_from_ajax_data(element)
+            else:
+                return self._extract_from_html_element(element)
+                
+        except Exception as e:
+            logger.error(f"Error extracting Koen Exclusief car data: {str(e)}")
+            return None
+    
+    def _extract_from_ajax_data(self, data: Dict) -> Optional[Dict]:
+        """Extract car data from AJAX JSON response"""
+        try:
+            car_data = {
+                'autotrack_id': f"koen_ajax_{data.get('id', hash(str(data)) % 1000000)}",
+                'make': 'Porsche',
+                'model': data.get('model', 'Unknown'),
+                'year': data.get('year'),
+                'mileage': data.get('mileage') or data.get('km'),
+                'fuel_type': data.get('fuel_type', 'Benzine'),
+                'description': data.get('description', ''),
+                'image_url': data.get('image_url') or data.get('image'),
+                'source_url': data.get('url', ''),
+                'price': data.get('price', 0)
+            }
+            
+            # Handle various price formats
+            if not car_data['price'] and 'prijs' in data:
+                car_data['price'] = data['prijs']
+            
+            # Extract price from string if needed
+            if isinstance(car_data['price'], str):
+                price_match = re.search(r'([\d.,]+)', car_data['price'].replace('.', '').replace(',', ''))
+                if price_match:
+                    car_data['price'] = int(price_match.group(1))
+            
+            # Handle relative URLs
+            if car_data['image_url'] and car_data['image_url'].startswith('/'):
+                car_data['image_url'] = f"{self.base_url}{car_data['image_url']}"
+            
+            if car_data['source_url'] and car_data['source_url'].startswith('/'):
+                car_data['source_url'] = f"{self.base_url}{car_data['source_url']}"
+            
+            return car_data if car_data['price'] > 0 else None
+            
+        except Exception as e:
+            logger.error(f"Error processing AJAX car data: {str(e)}")
+            return None
+    
+    def _extract_from_html_element(self, element) -> Optional[Dict]:
+        """Extract car data from HTML element"""
+        try:
             text_content = element.get_text()
             
-            # Generate ID from element content
-            element_hash = hash(str(element)[:200]) % 1000000
-            car_id = f"koen_{element_hash}"
+            # Generate ID from element content or use link if available
+            link = element.find('a', href=True)
+            if link and 'occasions-kopen' in link['href']:
+                # Extract ID from the occasions link
+                link_match = re.search(r'/occasions-kopen/(\d+)-', link['href'])
+                if link_match:
+                    car_id = f"koen_{link_match.group(1)}"
+                else:
+                    car_id = f"koen_link_{hash(link['href']) % 1000000}"
+            else:
+                element_hash = hash(str(element)[:200]) % 1000000
+                car_id = f"koen_html_{element_hash}"
             
             car_data = {
                 'autotrack_id': car_id,
-                'make': 'Porsche',  # Koen Exclusief specializes in Porsche
+                'make': 'Porsche',
                 'model': 'Unknown',
                 'year': None,
                 'mileage': None,
-                'fuel_type': 'Benzine',  # Default for Porsche
+                'fuel_type': 'Benzine',
                 'description': '',
                 'image_url': None,
                 'source_url': '',
                 'price': 0
             }
             
-            # Extract Porsche model from text
-            porsche_models = ['911', 'Carrera', 'Turbo', 'GT3', 'GT2', 'Cayenne', 'Macan', 'Panamera', 'Taycan', 'Boxster', 'Cayman']
-            for model in porsche_models:
-                if model.lower() in text_content.lower():
-                    car_data['model'] = model
-                    break
+            # Enhanced model extraction based on screenshot content
+            # Look for specific patterns like "Porsche 911 Cabrio 991 3.0 Carrera GTS"
+            text_lower = text_content.lower()
             
-            # Extract price (€ format)
+            # Extract specific model from common Porsche naming patterns
+            if '911' in text_lower:
+                car_data['model'] = '911'
+                # Look for specific 911 variants
+                if 'carrera' in text_lower:
+                    if 'gts' in text_lower:
+                        car_data['model'] = '911 Carrera GTS'
+                    elif 'turbo' in text_lower:
+                        car_data['model'] = '911 Turbo'
+                    else:
+                        car_data['model'] = '911 Carrera'
+                elif 'turbo' in text_lower:
+                    car_data['model'] = '911 Turbo'
+                elif 'gt3' in text_lower:
+                    car_data['model'] = '911 GT3'
+            elif 'cayenne' in text_lower:
+                car_data['model'] = 'Cayenne'
+            elif 'macan' in text_lower:
+                car_data['model'] = 'Macan'
+            elif 'panamera' in text_lower:
+                car_data['model'] = 'Panamera'
+            elif 'taycan' in text_lower:
+                car_data['model'] = 'Taycan'
+            elif 'boxster' in text_lower:
+                car_data['model'] = 'Boxster'
+            elif 'cayman' in text_lower:
+                car_data['model'] = 'Cayman'
+            
+            # Extract year - look for 4-digit years
+            year_match = re.search(r'\b(19[8-9]\d|20[0-2]\d)\b', text_content)
+            if year_match:
+                car_data['year'] = int(year_match.group(1))
+            
+            # Extract price - be more flexible with pricing
             price_patterns = [
                 r'€\s*([\d.,]+)',
                 r'([\d.,]+)\s*€',
-                r'(\d{5,})',  # At least 5 digits for car prices
+                r'\b(\d{5,})\b',  # At least 5 digits
             ]
             
             for pattern in price_patterns:
-                price_match = re.search(pattern, text_content.replace('.', '').replace(',', ''))
-                if price_match:
+                price_matches = re.findall(pattern, text_content.replace('.', '').replace(',', ''))
+                for match in price_matches:
                     try:
-                        car_data['price'] = int(price_match.group(1))
-                        if car_data['price'] > 10000:  # Reasonable minimum
+                        price_value = int(match)
+                        if 15000 <= price_value <= 2000000:  # Reasonable range for Porsche
+                            car_data['price'] = price_value
                             break
                     except ValueError:
                         continue
+                if car_data['price'] > 0:
+                    break
             
-            # Extract year
-            year_match = re.search(r'(19|20)\d{2}', text_content)
-            if year_match:
-                try:
-                    car_data['year'] = int(year_match.group(0))
-                except ValueError:
-                    pass
-            
-            # Extract mileage (km)
+            # Extract mileage
             mileage_patterns = [
                 r'([\d.,]+)\s*km',
                 r'([\d.,]+)\s*KM',
@@ -361,23 +452,28 @@ class KoenExclusiefScraper(BaseDealerScraper):
                 mileage_match = re.search(pattern, text_content.replace('.', '').replace(',', ''))
                 if mileage_match:
                     try:
-                        car_data['mileage'] = int(mileage_match.group(1))
-                        break
+                        mileage_value = int(mileage_match.group(1))
+                        if 0 <= mileage_value <= 500000:
+                            car_data['mileage'] = mileage_value
+                            break
                     except ValueError:
                         continue
             
-            # Extract image
-            img = element.find('img')
-            if img and img.get('src'):
-                src = img['src']
-                # Handle relative URLs
-                if src.startswith('/'):
-                    car_data['image_url'] = f"{self.base_url}{src}"
-                else:
-                    car_data['image_url'] = src
+            # Extract image from feed_images pattern
+            img = element.find('img', src=re.compile(r'/webservices/feed_images/'))
+            if img:
+                car_data['image_url'] = f"{self.base_url}{img['src']}"
+            else:
+                # Fallback to any img
+                img = element.find('img')
+                if img and img.get('src'):
+                    src = img['src']
+                    if src.startswith('/'):
+                        car_data['image_url'] = f"{self.base_url}{src}"
+                    elif src.startswith('http'):
+                        car_data['image_url'] = src
             
-            # Extract link for source URL
-            link = element.find('a', href=True)
+            # Extract occasions link
             if link:
                 href = link['href']
                 if href.startswith('/'):
@@ -385,17 +481,22 @@ class KoenExclusiefScraper(BaseDealerScraper):
                 else:
                     car_data['source_url'] = href
             
-            # Set description from the clean text
-            car_data['description'] = text_content.strip()[:500]
+            # Create description from meaningful text
+            clean_text = ' '.join(text_content.split())
+            car_data['description'] = clean_text[:500]
             
-            # Only return if we have valid data
-            if car_data['price'] > 0 and car_data['model'] != 'Unknown':
+            # More lenient validation - accept if we have Porsche content
+            has_porsche_content = any(term in text_lower for term in ['porsche', '911', 'carrera', 'turbo'])
+            has_meaningful_content = len(clean_text.strip()) > 20
+            
+            if has_porsche_content and has_meaningful_content:
+                logger.info(f"Extracted KoenExclusief car: {car_data['make']} {car_data['model']} ({car_data['year']}) - {car_data['price']}")
                 return car_data
             
             return None
             
         except Exception as e:
-            logger.error(f"Error extracting Koen Exclusief car data: {str(e)}")
+            logger.error(f"Error extracting HTML car data: {str(e)}")
             return None
 
 
