@@ -180,12 +180,11 @@ class KoenExclusiefScraper(BaseDealerScraper):
         return "https://www.autowereld.nl/aanbieder/autoservice-koen-exclusief-b-v-1003233/auto.html?il=100"
     
     def scrape_page(self, url: str) -> List[Dict]:
-        """Override scrape_page to handle Autowereld with anti-blocking measures"""
+        """Override scrape_page with WAF bypass using gradual approach"""
         try:
             logger.info(f"Scraping {self.dealer_name}: {url}")
             
             session = requests.Session()
-            # Enhanced headers to avoid 403 blocking
             session.headers.update({
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -198,52 +197,57 @@ class KoenExclusiefScraper(BaseDealerScraper):
                 'Sec-Fetch-Mode': 'navigate',
                 'Sec-Fetch-Site': 'none',
                 'Sec-Fetch-User': '?1',
-                'Cache-Control': 'max-age=0',
-                'Referer': 'https://www.autowereld.nl/'
+                'Cache-Control': 'max-age=0'
             })
             
-            # Add human-like delay
+            # WAF Bypass: Gradual approach
             import time
-            time.sleep(1)
             
-            # First try AJAX endpoints
-            ajax_cars = self._try_ajax_endpoints(session)
-            if ajax_cars:
-                logger.info(f"Found {len(ajax_cars)} cars via AJAX")
-                return ajax_cars
+            # Step 1: Visit main site first to establish session
+            try:
+                logger.info("Establishing session with main site...")
+                main_response = session.get("https://www.autowereld.nl", timeout=15)
+                if main_response.status_code != 200:
+                    logger.error(f"Main site failed: {main_response.status_code}")
+                    return []
+                time.sleep(2)
+            except Exception as e:
+                logger.error(f"Main site access failed: {str(e)}")
+                return []
             
-            # Try with retries and different user agents
-            max_retries = 3
-            user_agents = [
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            # Step 2: Try dealer page variants
+            session.headers['Referer'] = "https://www.autowereld.nl"
+            
+            dealer_urls = [
+                # Original URL
+                url,
+                # Without query parameters
+                url.split('?')[0],
+                # Just dealer base
+                "https://www.autowereld.nl/aanbieder/autoservice-koen-exclusief-b-v-1003233/",
+                # Alternative formats
+                "https://www.autowereld.nl/aanbieder/1003233/auto.html"
             ]
             
             response = None
-            for attempt in range(max_retries):
+            for dealer_url in dealer_urls:
                 try:
-                    if attempt > 0:
-                        session.headers['User-Agent'] = user_agents[attempt % len(user_agents)]
-                        time.sleep(3)  # Longer delay on retries
+                    logger.info(f"Trying dealer URL: {dealer_url}")
+                    response = session.get(dealer_url, timeout=15)
                     
-                    response = session.get(url, timeout=20)
-                    
-                    if response.status_code == 403:
-                        logger.warning(f"403 Forbidden on attempt {attempt + 1}")
-                        continue
-                    elif response.status_code == 200:
+                    if response.status_code == 200:
+                        logger.info(f"Success with: {dealer_url}")
                         break
                     else:
-                        logger.warning(f"Status {response.status_code} on attempt {attempt + 1}")
+                        logger.warning(f"Failed {dealer_url}: {response.status_code}")
+                        time.sleep(3)
                         
-                except requests.exceptions.RequestException as e:
-                    logger.warning(f"Request failed on attempt {attempt + 1}: {str(e)}")
-                    if attempt == max_retries - 1:
-                        raise e
+                except Exception as e:
+                    logger.warning(f"Error with {dealer_url}: {str(e)}")
+                    time.sleep(3)
             
             if not response or response.status_code != 200:
-                logger.error(f"Failed to fetch {url} after {max_retries} attempts: {response.status_code if response else 'No response'}")
+                logger.error("All dealer URL attempts failed")
                 return []
             
             soup = BeautifulSoup(response.content, 'html.parser')
