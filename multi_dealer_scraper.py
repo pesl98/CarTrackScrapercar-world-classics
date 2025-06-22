@@ -180,38 +180,175 @@ class KoenExclusiefScraper(BaseDealerScraper):
             return f"{self.base_url}/aanbod"
         return f"{self.base_url}/aanbod?page={page}"
     
+    def scrape_page(self, url: str) -> List[Dict]:
+        """Override scrape_page to handle JavaScript-loaded content"""
+        try:
+            logger.info(f"Scraping {self.dealer_name}: {url}")
+            
+            session = requests.Session()
+            session.headers.update(self.headers)
+            
+            # First try AJAX endpoints
+            ajax_cars = self._try_ajax_endpoints(session)
+            if ajax_cars:
+                logger.info(f"Found {len(ajax_cars)} cars via AJAX")
+                return ajax_cars
+            
+            response = session.get(url, timeout=15)
+            if response.status_code != 200:
+                logger.error(f"Failed to fetch {url}: {response.status_code}")
+                return []
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Check if content is loading via JavaScript
+            aanbod_area = soup.find('div', class_='aanbod-list-area')
+            if aanbod_area and 'Eén moment graag' in aanbod_area.get_text():
+                logger.info("Detected JavaScript loading, waiting and retrying")
+                
+                # Wait and try again
+                import time
+                time.sleep(3)
+                
+                response = session.get(url, timeout=15)
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # If still loading, look for pre-loaded car data elsewhere
+                if 'Eén moment graag' in soup.get_text():
+                    logger.info("Content still loading, looking for alternative car data")
+                    
+                    # Look for any Porsche links that might be pre-loaded
+                    porsche_links = soup.find_all('a', href=re.compile(r'/occasions-kopen/.*porsche.*', re.I))
+                    if porsche_links:
+                        logger.info(f"Found {len(porsche_links)} Porsche links outside loading area")
+                        
+                        cars = []
+                        for link in porsche_links[:5]:  # Limit to avoid processing too many
+                            # Create a basic car entry from the link
+                            href = link.get('href', '')
+                            link_text = link.get_text().strip()
+                            
+                            # Extract car ID from URL
+                            id_match = re.search(r'/occasions-kopen/(\d+)-', href)
+                            if id_match:
+                                car_id = id_match.group(1)
+                                
+                                # Basic car data from link
+                                car_data = {
+                                    'autotrack_id': car_id,
+                                    'make': 'Porsche',
+                                    'model': self._extract_porsche_model_from_url(href),
+                                    'year': self._extract_year_from_url(href),
+                                    'mileage': None,
+                                    'fuel_type': 'Benzine',
+                                    'description': link_text,
+                                    'image_url': f"/webservices/feed_images/{car_id}/{car_id}-0.jpg",
+                                    'source_url': href,
+                                    'price': 0,
+                                    'dealer_name': self.dealer_name
+                                }
+                                
+                                cars.append(car_data)
+                        
+                        if cars:
+                            logger.info(f"Extracted {len(cars)} cars from pre-loaded links")
+                            return cars
+            
+            # Standard processing
+            car_elements = self.find_car_elements(soup)
+            logger.info(f"Found {len(car_elements)} car elements on {self.dealer_name}")
+            
+            cars = []
+            for element in car_elements:
+                car_data = self.extract_car_data(element)
+                if car_data:
+                    car_data['dealer_name'] = self.dealer_name
+                    cars.append(car_data)
+            
+            return cars
+            
+        except Exception as e:
+            logger.error(f"Error scraping {self.dealer_name}: {str(e)}")
+            return []
+    
+    def _extract_porsche_model_from_url(self, url: str) -> str:
+        """Extract Porsche model from URL"""
+        url_lower = url.lower()
+        
+        # Common Porsche models
+        models = {
+            '911': '911',
+            'carrera': '911 Carrera',
+            'turbo': '911 Turbo', 
+            'gt3': '911 GT3',
+            'gts': 'GTS',
+            'cayenne': 'Cayenne',
+            'macan': 'Macan',
+            'panamera': 'Panamera',
+            'boxster': 'Boxster',
+            'cayman': 'Cayman'
+        }
+        
+        for key, model in models.items():
+            if key in url_lower:
+                return model
+        
+        return '911'  # Default for Porsche
+    
+    def _extract_year_from_url(self, url: str) -> Optional[int]:
+        """Extract year from URL if present"""
+        year_match = re.search(r'(\d{4})', url)
+        if year_match:
+            year = int(year_match.group(1))
+            if 1990 <= year <= 2025:  # Reasonable year range
+                return year
+        return None
+    
     def _try_ajax_endpoints(self, session: requests.Session) -> List[Dict]:
         """Try to fetch car data from potential AJAX endpoints"""
+        logger.info("Attempting to find AJAX endpoints for dynamic car loading")
+        
+        # Since JavaScript loading was detected, try minimal AJAX approach
         ajax_endpoints = [
-            "/pages/fetch-related-data",
-            "/pages/find-autodata-vehicle-data",
-            "/api/cars",
+            "/load-more-products",
             "/api/aanbod",
-            "/data/cars.json"
+            "/pages/load-aanbod"
         ]
         
         for endpoint in ajax_endpoints:
             try:
                 url = f"{self.base_url}{endpoint}"
-                response = session.get(url, timeout=10)
+                response = session.get(url, timeout=5)  # Shorter timeout
                 
-                if response.status_code == 200:
-                    try:
-                        data = response.json()
-                        if isinstance(data, list) and len(data) > 0:
-                            logger.info(f"Found {len(data)} cars via AJAX endpoint: {endpoint}")
-                            return data
-                        elif isinstance(data, dict) and 'cars' in data:
-                            cars = data['cars']
-                            logger.info(f"Found {len(cars)} cars via AJAX endpoint: {endpoint}")
-                            return cars
-                    except:
-                        # Not JSON, continue
-                        pass
+                if response.status_code == 200 and len(response.text) > 100:
+                    content = response.text.lower()
+                    if any(term in content for term in ['porsche', 'occasions-kopen', 'feed_images']):
+                        logger.info(f"Found potential car content via AJAX: {endpoint}")
+                        return []  # Return empty for now, structure detected
+                        
             except:
                 continue
         
+        logger.info("No accessible AJAX endpoints found")
         return []
+    
+    def _extract_cars_from_html(self, soup):
+        """Extract cars from HTML soup (helper for AJAX responses)"""
+        car_elements = []
+        
+        # Look for the patterns from screenshot
+        selectors = [
+            'div.each_product_div',
+            'div[class*="each_car_cls"]',
+            'a[href*="occasions-kopen"][href*="porsche"]'
+        ]
+        
+        for selector in selectors:
+            elements = soup.select(selector)
+            if elements:
+                car_elements.extend(elements)
+        
+        return car_elements[:10] if car_elements else []
     
     def find_car_elements(self, soup: BeautifulSoup) -> List:
         # Primary approach: look for aanbod-list-area class as suggested
