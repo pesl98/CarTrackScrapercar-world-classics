@@ -170,15 +170,14 @@ class CarWorldClassicsScraper(BaseDealerScraper):
 
 
 class KoenExclusiefScraper(BaseDealerScraper):
-    """Enhanced scraper for Koen Exclusief with AJAX support"""
+    """Enhanced scraper for Koen Exclusief via Autowereld listing"""
     
     def __init__(self):
-        super().__init__("KoenExclusief", "https://koenexclusief.nl")
+        super().__init__("KoenExclusief", "https://www.autowereld.nl")
     
     def get_inventory_url(self, page: int = 1) -> str:
-        if page == 1:
-            return f"{self.base_url}/aanbod"
-        return f"{self.base_url}/aanbod?page={page}"
+        # Use the Autowereld page for Koen Exclusief with high limit
+        return "https://www.autowereld.nl/aanbieder/autoservice-koen-exclusief-b-v-1003233/auto.html?il=100"
     
     def scrape_page(self, url: str) -> List[Dict]:
         """Override scrape_page to handle JavaScript-loaded content"""
@@ -351,91 +350,68 @@ class KoenExclusiefScraper(BaseDealerScraper):
         return car_elements[:10] if car_elements else []
     
     def find_car_elements(self, soup: BeautifulSoup) -> List:
-        # Primary approach: look for aanbod-list-area class as suggested
-        aanbod_area = soup.find('div', class_='aanbod-list-area')
-        if aanbod_area:
-            logger.info("Found aanbod-list-area container")
-            
-            # Look for car elements within this area
-            car_elements = []
-            
-            # Try different selectors within the aanbod area
-            selectors_in_area = [
-                'div.each_product_div',
-                'div[class*="each_car_cls"]',
-                'div.col-lg-6',
-                'div[class*="product"]',
-                'div[class*="car"]'
-            ]
-            
-            for selector in selectors_in_area:
-                elements = aanbod_area.select(selector)
-                if elements:
-                    # Filter for actual car listings
-                    for elem in elements:
-                        # Check for car indicators
-                        has_car_link = elem.find('a', href=re.compile(r'/occasions-kopen/.*', re.I))
-                        has_car_image = elem.find('img', src=re.compile(r'/webservices/feed_images/'))
-                        has_porsche_text = any(term in elem.get_text().lower() for term in ['porsche', '911', 'carrera'])
-                        
-                        if has_car_link or has_car_image or has_porsche_text:
-                            car_elements.append(elem)
+        # For Autowereld, look for specific car listing elements
+        car_selectors = [
+            '.car-item',
+            '.listing-item',
+            '.vehicle-item',
+            '.search-result-item',
+            '.result-item',
+            '[class*="car-"]',
+            '[class*="vehicle-"]',
+            '[class*="listing-"]'
+        ]
+        
+        for selector in car_selectors:
+            elements = soup.select(selector)
+            if elements:
+                logger.info(f"Found {len(elements)} elements with selector: {selector}")
+                # Filter for actual car listings
+                valid_cars = []
+                for elem in elements:
+                    elem_text = elem.get_text().lower()
+                    elem_html = str(elem).lower()
                     
-                    if car_elements:
-                        logger.info(f"Found {len(car_elements)} car elements in aanbod-list-area using {selector}")
-                        return car_elements
-            
-            # If no specific selectors work, get all divs in the area
-            all_divs_in_area = aanbod_area.find_all('div')
-            for div in all_divs_in_area:
-                div_text = div.get_text().lower()
-                # Look for car-specific content
-                if (any(model in div_text for model in ['porsche', '911', 'carrera', 'turbo']) and
-                    any(indicator in div_text for indicator in ['€', 'km', 'jaar']) and
-                    len(div_text.strip()) > 50):
-                    car_elements.append(div)
-            
-            if car_elements:
-                logger.info(f"Found {len(car_elements)} car elements via content analysis in aanbod-list-area")
-                return car_elements[:10]
+                    # Check for car indicators
+                    has_car_content = any(term in elem_text for term in [
+                        'porsche', 'mercedes', 'bmw', 'audi', 'volkswagen',
+                        'km', 'euro', '€', 'benzine', 'diesel'
+                    ])
+                    
+                    has_car_link = any(term in elem_html for term in [
+                        'occasions', 'auto', 'car', 'voertuig'
+                    ])
+                    
+                    if has_car_content or has_car_link:
+                        valid_cars.append(elem)
+                
+                if valid_cars:
+                    logger.info(f"Filtered to {len(valid_cars)} valid car elements")
+                    return valid_cars
         
-        # Secondary approach: look for feed_images anywhere on page
-        feed_images = soup.find_all('img', src=re.compile(r'/webservices/feed_images/\d+/'))
-        if feed_images:
-            logger.info(f"Found {len(feed_images)} car images, extracting containers")
-            car_containers = []
-            
-            for img in feed_images:
-                # Find parent container that holds the car data
-                container = img.find_parent('div', class_=re.compile(r'.*product.*|.*car.*|.*each.*'))
-                if container and container not in car_containers:
-                    car_containers.append(container)
-            
-            if car_containers:
-                logger.info(f"Extracted {len(car_containers)} car containers from images")
-                return car_containers
+        # Fallback: look for divs containing car-related content
+        all_divs = soup.find_all('div')
+        car_divs = []
         
-        # Tertiary approach: look for occasions links
-        occasions_links = soup.find_all('a', href=re.compile(r'/occasions-kopen/.*porsche.*', re.I))
-        if occasions_links:
-            logger.info(f"Found {len(occasions_links)} Porsche occasions links")
-            car_containers = []
+        for div in all_divs:
+            div_text = div.get_text().strip()
+            div_html = str(div).lower()
             
-            for link in occasions_links:
-                container = link.find_parent('div', class_=True)
-                if container and container not in car_containers:
-                    # Verify this has actual car content
-                    container_text = container.get_text()
-                    if (any(model in container_text.lower() for model in ['911', 'carrera', 'porsche']) and
-                        len(container_text.strip()) > 50):
-                        car_containers.append(container)
-            
-            if car_containers:
-                logger.info(f"Extracted {len(car_containers)} car containers from occasions links")
-                return car_containers
+            # Must have substantial content and car indicators
+            if (len(div_text) > 100 and 
+                any(term in div_text.lower() for term in ['porsche', 'mercedes', 'bmw', 'audi']) and
+                any(term in div_text.lower() for term in ['€', 'euro', 'km', 'benzine', 'diesel'])):
+                
+                # Check for links to car details
+                has_car_link = div.find('a', href=True)
+                if has_car_link:
+                    # Avoid nested elements
+                    is_nested = any(div in other.descendants for other in car_divs)
+                    if not is_nested:
+                        car_divs.append(div)
         
-        logger.info("No car elements found in KoenExclusief")
-        return []
+        logger.info(f"Fallback found {len(car_divs)} car divs")
+        return car_divs[:20]  # Limit to avoid processing too many
     
     def extract_car_data(self, element) -> Optional[Dict]:
         try:
