@@ -133,6 +133,26 @@ body {
     box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
 }
 
+/* Dealer badge styling */
+.dealer-badge {
+    display: inline-block;
+    background: var(--bs-secondary);
+    color: white;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-top: 2px;
+    font-weight: 500;
+}
+
+.dealer-badge[data-dealer="CarWorldClassics"] {
+    background: #007bff;
+}
+
+.dealer-badge[data-dealer="KoenExclusief"] {
+    background: #28a745;
+}
+
 /* Car detail page specific styles */
 .car-detail-image {
     max-width: 100%;

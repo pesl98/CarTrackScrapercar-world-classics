@@ -90,12 +90,26 @@ class CarWorldClassicsScraper(BaseDealerScraper):
                 link = element.find('a', href=True)
                 if link:
                     href = link['href']
-                    id_match = re.search(r'/(\d+)[-/]', href)
-                    if id_match:
-                        car_id = id_match.group(1)
+                    # Try multiple patterns for ID extraction
+                    id_patterns = [
+                        r'/occasions-kopen/(\d+)-',
+                        r'/(\d+)[-/]',
+                        r'id=(\d+)',
+                        r'/(\d+)$'
+                    ]
+                    for pattern in id_patterns:
+                        id_match = re.search(pattern, href)
+                        if id_match:
+                            car_id = id_match.group(1)
+                            break
             
+            # If still no ID, generate one from URL or element content
             if not car_id:
-                return None
+                link = element.find('a', href=True)
+                if link:
+                    car_id = str(hash(link['href']) % 100000)
+                else:
+                    car_id = str(hash(str(element)[:100]) % 100000)
             
             car_data = {
                 'autotrack_id': car_id,
@@ -126,13 +140,41 @@ class CarWorldClassicsScraper(BaseDealerScraper):
                         model_parts = url_parts[1:5]
                         car_data['model'] = ' '.join(model_parts).title()
             
-            # Extract price
-            price_element = element.find('span', class_='price') or element.find('div', class_='price')
+            # Extract price - try multiple selectors and patterns
+            price_element = None
+            price_selectors = [
+                ('span', {'class': 'price'}),
+                ('div', {'class': 'price'}),
+                ('span', {'class': re.compile(r'.*price.*')}),
+                ('div', {'class': re.compile(r'.*price.*')}),
+                ('strong', {}),
+                ('span', {'class': 'amount'}),
+                ('div', {'class': 'amount'})
+            ]
+            
+            for tag, attrs in price_selectors:
+                price_element = element.find(tag, attrs)
+                if price_element:
+                    break
+            
             if price_element:
                 price_text = price_element.get_text()
-                price_match = re.search(r'€\s*([\d.,]+)', price_text.replace('.', '').replace(',', ''))
-                if price_match:
-                    car_data['price'] = int(price_match.group(1))
+                # Try multiple price patterns
+                price_patterns = [
+                    r'€\s*([\d.,]+)',
+                    r'(\d+[.,]?\d*)\s*€',
+                    r'(\d+[.,]\d+)',
+                    r'(\d{4,})'  # At least 4 digits for reasonable car prices
+                ]
+                
+                for pattern in price_patterns:
+                    price_match = re.search(pattern, price_text.replace('.', '').replace(',', ''))
+                    if price_match:
+                        try:
+                            car_data['price'] = int(price_match.group(1))
+                            break
+                        except ValueError:
+                            continue
             
             # Extract image
             img_element = element.find('img')
