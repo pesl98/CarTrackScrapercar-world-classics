@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a Flask-based car tracking application that scrapes car listings from CarWorld Classics and monitors price changes over time. The application provides a web dashboard for viewing car inventory, tracking price history, and monitoring market trends.
+This is a Flask-based car tracking application that scrapes car listings from multiple dealers (CarWorld Classics and Koen Exclusief) and monitors price changes over time. The application provides a web dashboard for viewing car inventory, tracking price history, monitoring market trends, and exporting data to CSV format.
 
 ## System Architecture
 
@@ -36,10 +36,16 @@ This is a Flask-based car tracking application that scrapes car listings from Ca
 - CRUD operations for cars and price history
 - Query methods with filtering and pagination
 
-### Web Scraper (`scraper.py`)
-- Scrapes CarWorld Classics website
-- Extracts car details and pricing information
-- Tracks new listings and price changes
+### Multi-Dealer Scraper (`multi_dealer_scraper.py`)
+- Modular scraper framework supporting multiple dealers
+- CarWorld Classics scraper with precise HTML parsing
+- Koen Exclusief scraper for luxury car dealers
+- Base scraper class for easy dealer expansion
+- Dealer-specific data extraction and validation
+
+### Legacy Single Scraper (`scraper.py`)
+- Original CarWorld Classics scraper (kept for compatibility)
+- Single-dealer implementation
 
 ### Scheduler (`scheduler.py`)
 - Background task scheduling
@@ -71,9 +77,13 @@ This is a Flask-based car tracking application that scrapes car listings from Ca
 - **Bootstrap 5**: CSS framework for responsive design
 - **Font Awesome**: Icon library for UI elements
 
-### Target Website
-- **CarWorld Classics**: Primary data source for car listings
-- Base URL: https://www.carworldclassics.com/aanbod
+### Target Websites
+- **CarWorld Classics**: Primary data source for classic and luxury cars
+  - Base URL: https://www.carworldclassics.com/aanbod
+  - Successfully scraping 40+ cars per session
+- **Koen Exclusief**: Secondary dealer specializing in luxury vehicles
+  - Base URL: https://koenexclusief.nl/aanbod
+  - Framework implemented for future expansion
 
 ## Deployment Strategy
 
@@ -93,7 +103,25 @@ This is a Flask-based car tracking application that scrapes car listings from Ca
 - Price history tracking for trend analysis
 
 ## Changelog
-- June 22, 2025. Initial setup
+- June 22, 2025: Initial setup with CarWorld Classics scraper
+- June 22, 2025: Enhanced make/model extraction from URL patterns
+- June 22, 2025: Fixed pagination logic to prevent infinite loops
+- June 22, 2025: Added CSV export functionality for car data
+- June 22, 2025: Implemented price change tracking with detailed history
+- June 22, 2025: **Multi-dealer framework completed**
+  - Created modular scraper architecture with base class
+  - Successfully integrated CarWorld Classics (41 cars scraped)
+  - Added Koen Exclusief framework for future expansion
+  - Enhanced database schema with dealer_name field
+  - Added dealer badges to frontend display
+  - Updated scheduling system for multi-dealer support
+
+## Recent Success
+- Multi-dealer scraping system successfully extracts 40+ cars from CarWorld Classics
+- Database properly stores dealer information and prevents duplicates
+- Frontend displays dealer badges with color-coded identification
+- Price change tracking works across multiple dealers
+- CSV export includes dealer information
 
 ## User Preferences
 

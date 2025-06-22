@@ -172,7 +172,7 @@ class Database:
         conn.commit()
         conn.close()
     
-    def mark_cars_as_sold(self, current_autotrack_ids):
+    def mark_cars_as_sold(self, current_autotrack_ids, dealer_name=None):
         """Mark cars as sold if they're not in current listings"""
         if not current_autotrack_ids:
             return
@@ -183,13 +183,23 @@ class Database:
         # Create placeholder string for IN clause
         placeholders = ','.join('?' for _ in current_autotrack_ids)
         
-        cursor.execute(f'''
-            UPDATE cars 
-            SET is_sold = TRUE, sold_date = CURRENT_TIMESTAMP
-            WHERE autotrack_id NOT IN ({placeholders}) 
-            AND is_sold = FALSE
-            AND last_seen < datetime('now', '-2 days')
-        ''', current_autotrack_ids)
+        if dealer_name:
+            cursor.execute(f'''
+                UPDATE cars 
+                SET is_sold = TRUE, sold_date = CURRENT_TIMESTAMP
+                WHERE autotrack_id NOT IN ({placeholders}) 
+                AND is_sold = FALSE
+                AND dealer_name = ?
+                AND last_seen < datetime('now', '-2 days')
+            ''', current_autotrack_ids + [dealer_name])
+        else:
+            cursor.execute(f'''
+                UPDATE cars 
+                SET is_sold = TRUE, sold_date = CURRENT_TIMESTAMP
+                WHERE autotrack_id NOT IN ({placeholders}) 
+                AND is_sold = FALSE
+                AND last_seen < datetime('now', '-2 days')
+            ''', current_autotrack_ids)
         
         sold_count = cursor.rowcount
         conn.commit()

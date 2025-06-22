@@ -78,38 +78,18 @@ class CarWorldClassicsScraper(BaseDealerScraper):
     
     def extract_car_data(self, element) -> Optional[Dict]:
         try:
-            # Extract car ID from data attribute or URL
-            car_id = None
+            # Extract car ID from the link URL (based on debug output)
+            link = element.find('a', href=True)
+            if not link:
+                return None
             
-            # Try to find ID from various sources
-            id_element = element.find('div', {'data-id': True})
-            if id_element:
-                car_id = id_element.get('data-id')
+            href = link['href']
+            # Extract ID from URL like /occasions-kopen/43705952-porsche-911-...
+            id_match = re.search(r'/occasions-kopen/(\d+)-', href)
+            if not id_match:
+                return None
             
-            if not car_id:
-                link = element.find('a', href=True)
-                if link:
-                    href = link['href']
-                    # Try multiple patterns for ID extraction
-                    id_patterns = [
-                        r'/occasions-kopen/(\d+)-',
-                        r'/(\d+)[-/]',
-                        r'id=(\d+)',
-                        r'/(\d+)$'
-                    ]
-                    for pattern in id_patterns:
-                        id_match = re.search(pattern, href)
-                        if id_match:
-                            car_id = id_match.group(1)
-                            break
-            
-            # If still no ID, generate one from URL or element content
-            if not car_id:
-                link = element.find('a', href=True)
-                if link:
-                    car_id = str(hash(link['href']) % 100000)
-                else:
-                    car_id = str(hash(str(element)[:100]) % 100000)
+            car_id = id_match.group(1)
             
             car_data = {
                 'autotrack_id': car_id,
@@ -120,71 +100,72 @@ class CarWorldClassicsScraper(BaseDealerScraper):
                 'fuel_type': None,
                 'description': '',
                 'image_url': None,
-                'source_url': '',
+                'source_url': href,
                 'price': 0
             }
             
-            # Extract make and model from URL
-            link = element.find('a', href=True)
-            if link:
-                href = link['href']
-                car_data['source_url'] = href
-                
-                url_match = re.search(r'/occasions-kopen/(\d+)-([^/?]+)', href)
-                if url_match:
-                    url_text = url_match.group(2)
-                    url_parts = url_text.split('-')
-                    
-                    if len(url_parts) >= 2:
-                        car_data['make'] = url_parts[0].capitalize()
-                        model_parts = url_parts[1:5]
-                        car_data['model'] = ' '.join(model_parts).title()
+            # Extract make and model from the structured content
+            h6_element = element.find('h6')
+            if h6_element:
+                car_data['make'] = h6_element.get_text().strip()
             
-            # Extract price - try multiple selectors and patterns
-            price_element = None
-            price_selectors = [
-                ('span', {'class': 'price'}),
-                ('div', {'class': 'price'}),
-                ('span', {'class': re.compile(r'.*price.*')}),
-                ('div', {'class': re.compile(r'.*price.*')}),
-                ('strong', {}),
-                ('span', {'class': 'amount'}),
-                ('div', {'class': 'amount'})
-            ]
+            # Find the description paragraph
+            p_element = element.find('p')
+            if p_element:
+                car_data['model'] = p_element.get_text().strip()
             
-            for tag, attrs in price_selectors:
-                price_element = element.find(tag, attrs)
-                if price_element:
-                    break
-            
-            if price_element:
-                price_text = price_element.get_text()
-                # Try multiple price patterns
-                price_patterns = [
-                    r'€\s*([\d.,]+)',
-                    r'(\d+[.,]?\d*)\s*€',
-                    r'(\d+[.,]\d+)',
-                    r'(\d{4,})'  # At least 4 digits for reasonable car prices
-                ]
-                
-                for pattern in price_patterns:
-                    price_match = re.search(pattern, price_text.replace('.', '').replace(',', ''))
+            # Extract price from the price column (col-5 text-end)
+            price_col = element.find('div', {'class': ['col-5', 'text-end']})
+            if price_col:
+                price_h6 = price_col.find('h6')
+                if price_h6:
+                    price_text = price_h6.get_text().strip()
+                    # Parse price like "€ 299.911,-"
+                    price_match = re.search(r'€\s*([\d.]+)', price_text)
                     if price_match:
                         try:
-                            car_data['price'] = int(price_match.group(1))
-                            break
+                            # Remove dots and convert to int
+                            price_str = price_match.group(1).replace('.', '')
+                            car_data['price'] = int(price_str)
                         except ValueError:
-                            continue
+                            pass
+            
+            # Extract mileage and year from the table
+            table = element.find('table')
+            if table:
+                td_elements = table.find_all('td')
+                if len(td_elements) >= 2:
+                    # First td: mileage (e.g., "4.500 km")
+                    mileage_text = td_elements[0].get_text().strip()
+                    mileage_match = re.search(r'([\d.]+)', mileage_text)
+                    if mileage_match:
+                        try:
+                            car_data['mileage'] = int(mileage_match.group(1).replace('.', ''))
+                        except ValueError:
+                            pass
+                    
+                    # Second td: year (e.g., "02-2025")
+                    year_text = td_elements[1].get_text().strip()
+                    year_match = re.search(r'(\d{4})', year_text)
+                    if year_match:
+                        try:
+                            car_data['year'] = int(year_match.group(1))
+                        except ValueError:
+                            pass
             
             # Extract image
             img_element = element.find('img')
             if img_element and img_element.get('src'):
                 car_data['image_url'] = img_element['src']
             
-            return car_data if car_data['price'] > 0 else None
+            # Only return if we have valid data
+            if car_data['price'] > 0 and car_data['make'] != 'Unknown':
+                return car_data
+            
+            return None
             
         except Exception as e:
-            logger.error(f"Error extracting car data: {str(e)}")
+            logger.error(f"Error extracting CarWorldClassics car data: {str(e)}")
             return None
 
 
