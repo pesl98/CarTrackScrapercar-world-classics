@@ -24,7 +24,8 @@ class Database:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS cars (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                autotrack_id TEXT UNIQUE NOT NULL,
+                autotrack_id TEXT NOT NULL,
+                dealer_name TEXT NOT NULL,
                 make TEXT NOT NULL,
                 model TEXT NOT NULL,
                 year INTEGER,
@@ -37,7 +38,8 @@ class Database:
                 first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_sold BOOLEAN DEFAULT FALSE,
-                sold_date TIMESTAMP NULL
+                sold_date TIMESTAMP NULL,
+                UNIQUE(autotrack_id, dealer_name)
             )
         ''')
         
