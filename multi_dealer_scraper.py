@@ -170,60 +170,131 @@ class CarWorldClassicsScraper(BaseDealerScraper):
 
 
 class KoenExclusiefScraper(BaseDealerScraper):
-    """Scraper for Koen Exclusief"""
+    """Enhanced scraper for Koen Exclusief with AJAX support"""
     
     def __init__(self):
         super().__init__("KoenExclusief", "https://koenexclusief.nl")
     
     def get_inventory_url(self, page: int = 1) -> str:
-        # Koen Exclusief uses different URL structure
         if page == 1:
             return f"{self.base_url}/aanbod"
         return f"{self.base_url}/aanbod?page={page}"
     
-    def find_car_elements(self, soup: BeautifulSoup) -> List:
-        # Based on analysis, Koen Exclusief uses JavaScript to load cars
-        # Look for the container that would hold car listings
+    def _try_ajax_endpoints(self, session: requests.Session) -> List[Dict]:
+        """Try to fetch car data from potential AJAX endpoints"""
+        ajax_endpoints = [
+            "/pages/fetch-related-data",
+            "/pages/find-autodata-vehicle-data",
+            "/api/cars",
+            "/api/aanbod",
+            "/data/cars.json"
+        ]
         
+        for endpoint in ajax_endpoints:
+            try:
+                url = f"{self.base_url}{endpoint}"
+                response = session.get(url, timeout=10)
+                
+                if response.status_code == 200:
+                    try:
+                        data = response.json()
+                        if isinstance(data, list) and len(data) > 0:
+                            logger.info(f"Found {len(data)} cars via AJAX endpoint: {endpoint}")
+                            return data
+                        elif isinstance(data, dict) and 'cars' in data:
+                            cars = data['cars']
+                            logger.info(f"Found {len(cars)} cars via AJAX endpoint: {endpoint}")
+                            return cars
+                    except:
+                        # Not JSON, continue
+                        pass
+            except:
+                continue
+        
+        return []
+    
+    def find_car_elements(self, soup: BeautifulSoup) -> List:
         # Check if they have cars ("0 Occasions" indicates no inventory)
         occasions_text = soup.get_text()
         if "0 Occasions" in occasions_text:
             logger.info("Koen Exclusief currently has 0 cars in inventory")
             return []
         
-        # Look for car listing containers when they have inventory
+        # Try AJAX endpoints first
+        session = requests.Session()
+        session.headers.update(self.headers)
+        
+        ajax_data = self._try_ajax_endpoints(session)
+        if ajax_data:
+            return ajax_data  # Return raw data for AJAX processing
+        
+        # Look for car listing containers in HTML
         selectors_to_try = [
+            'div.car-item',
+            'div.vehicle-item',
             'div.occasion-item',
-            'div.car-listing',
-            'div.vehicle-card',
-            'div.porsche-item',
+            'div.auto-item',
+            'div[class*="car"]',
+            'div[class*="vehicle"]',
             'div[class*="occasion"]',
             'div[class*="auto"]',
-            'div[class*="car-"]',
             'article.car',
-            'div.product-item'
+            'div.listing-item'
         ]
         
         for selector in selectors_to_try:
             elements = soup.select(selector)
             if elements and len(elements) > 0:
-                logger.info(f"Found {len(elements)} car elements using selector: {selector}")
-                return elements
+                # Filter out navigation/header elements
+                car_elements = []
+                for elem in elements:
+                    elem_text = elem.get_text().lower()
+                    if (any(indicator in elem_text for indicator in ['€', 'km', 'jaar']) and
+                        len(elem_text.strip()) > 50):
+                        car_elements.append(elem)
+                
+                if car_elements:
+                    logger.info(f"Found {len(car_elements)} valid car elements using: {selector}")
+                    return car_elements
         
-        # Fallback: look for elements containing car-specific content
+        # Enhanced fallback: look for structured car data
         car_containers = []
-        all_divs = soup.find_all('div')
         
-        for div in all_divs:
-            div_text = div.get_text().lower()
-            # Look for divs that contain car-specific information
-            if (any(model in div_text for model in ['911', 'carrera', 'turbo', 'cayenne', 'macan', 'panamera']) and
-                any(indicator in div_text for indicator in ['€', 'km', 'jaar', 'bouwjaar']) and
-                len(div_text.strip()) > 100):  # Substantial content
-                car_containers.append(div)
+        # Look for elements with car-specific data attributes
+        data_elements = soup.find_all(attrs=lambda x: x and any(
+            k.startswith('data-') and any(term in k.lower() for term in ['car', 'auto', 'vehicle'])
+            for k in x.keys()
+        ))
         
-        logger.info(f"Fallback found {len(car_containers)} potential car containers")
-        return car_containers[:20]
+        for elem in data_elements:
+            elem_text = elem.get_text().lower()
+            if (any(model in elem_text for model in ['porsche', '911', 'carrera', 'turbo', 'cayenne', 'macan']) and
+                any(indicator in elem_text for indicator in ['€', 'km']) and
+                len(elem_text.strip()) > 80):
+                car_containers.append(elem)
+        
+        if car_containers:
+            logger.info(f"Found {len(car_containers)} cars via data attributes")
+            return car_containers
+        
+        # Final fallback: comprehensive content analysis
+        all_elements = soup.find_all(['div', 'article', 'section'])
+        for elem in all_elements:
+            elem_text = elem.get_text().lower()
+            
+            # More comprehensive Porsche model detection
+            porsche_indicators = ['porsche', '911', 'carrera', 'turbo', 'gt3', 'gt2', 'cayenne', 'macan', 'panamera', 'taycan', 'boxster', 'cayman']
+            price_indicators = ['€', 'eur', 'euro']
+            tech_indicators = ['km', 'kilometer', 'jaar', 'bouwjaar', 'pk', 'kw', 'benzine', 'diesel']
+            
+            if (any(model in elem_text for model in porsche_indicators) and
+                any(price in elem_text for price in price_indicators) and
+                any(tech in elem_text for tech in tech_indicators) and
+                len(elem_text.strip()) > 100):
+                car_containers.append(elem)
+        
+        logger.info(f"Final fallback found {len(car_containers)} potential car containers")
+        return car_containers[:15]
     
     def extract_car_data(self, element) -> Optional[Dict]:
         try:
