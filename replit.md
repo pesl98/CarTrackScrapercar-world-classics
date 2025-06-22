@@ -130,14 +130,16 @@ This is a Flask-based car tracking application that scrapes car listings from mu
   - Framework ready to capture cars when they become available on the site
 
 ## Recent Success
-- Multi-dealer scraping system successfully extracts 41 cars from CarWorld Classics
-- Enhanced KoenExclusief scraper with AJAX support and robust data validation
-- System properly handles empty inventory (0 cars) and dynamic content loading
+- Multi-dealer scraping system successfully extracts 42 cars from CarWorld Classics
+- CarWorld Classics scraper fully operational with robust pagination and data extraction
 - Database correctly stores dealer information and prevents duplicates
 - Frontend displays dealer badges with color-coded identification
 - Price change tracking works across multiple dealers
 - CSV export includes dealer information
-- Comprehensive fallback mechanisms for different website architectures
+- **KoenExclusief Challenge**: Autowereld.nl protected by DPG Media's enterprise WAF (Web Application Firewall)
+  - All automated requests blocked with 403 errors (including homepage access)
+  - Investigated multiple bypass techniques: gradual approach, mobile headers, alternative domains, cache access
+  - WAF protection too sophisticated for standard scraping methods
 
 ## User Preferences
 
