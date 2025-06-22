@@ -72,11 +72,12 @@ class Database:
         
         try:
             cursor.execute('''
-                INSERT INTO cars (autotrack_id, make, model, year, mileage, fuel_type, 
-                                description, image_url, current_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO cars (autotrack_id, dealer_name, make, model, year, mileage, fuel_type, 
+                                description, image_url, source_url, current_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 car_data['autotrack_id'],
+                car_data.get('dealer_name', 'CarWorldClassics'),
                 car_data['make'],
                 car_data['model'],
                 car_data['year'],
@@ -84,6 +85,7 @@ class Database:
                 car_data['fuel_type'],
                 car_data['description'],
                 car_data['image_url'],
+                car_data.get('source_url', ''),
                 car_data['price']
             ))
             
@@ -105,12 +107,15 @@ class Database:
         finally:
             conn.close()
     
-    def get_car_by_autotrack_id(self, autotrack_id):
-        """Get car by AutoTrack ID"""
+    def get_car_by_autotrack_id(self, autotrack_id, dealer_name=None):
+        """Get car by AutoTrack ID and optionally dealer name"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute('SELECT * FROM cars WHERE autotrack_id = ?', (autotrack_id,))
+        if dealer_name:
+            cursor.execute('SELECT * FROM cars WHERE autotrack_id = ? AND dealer_name = ?', (autotrack_id, dealer_name))
+        else:
+            cursor.execute('SELECT * FROM cars WHERE autotrack_id = ?', (autotrack_id,))
         car = cursor.fetchone()
         
         conn.close()

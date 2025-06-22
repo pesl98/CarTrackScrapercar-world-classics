@@ -1,6 +1,7 @@
 from flask import Flask, render_template, jsonify, request, send_file, make_response
 from database import Database
 from scraper import CarScraper
+from multi_dealer_scraper import MultiDealerScraper
 from scheduler import start_scheduler
 import json
 import csv
