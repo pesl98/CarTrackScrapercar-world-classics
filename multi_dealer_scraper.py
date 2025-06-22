@@ -214,36 +214,55 @@ class KoenExclusiefScraper(BaseDealerScraper):
         return []
     
     def find_car_elements(self, soup: BeautifulSoup) -> List:
-        # Based on screenshot, look for specific KoenExclusief structure
-        # Primary selectors from actual HTML structure
-        primary_selectors = [
-            'div.each_product_div',
-            'div[class*="each_car_cls"]',
-            'div.col-lg-6.each_product_div',
-        ]
-        
-        car_elements = []
-        for selector in primary_selectors:
-            elements = soup.select(selector)
-            if elements:
-                # Filter for actual car listings (must contain Porsche content)
-                valid_cars = []
-                for elem in elements:
-                    elem_text = elem.get_text().lower()
+        # Primary approach: look for aanbod-list-area class as suggested
+        aanbod_area = soup.find('div', class_='aanbod-list-area')
+        if aanbod_area:
+            logger.info("Found aanbod-list-area container")
+            
+            # Look for car elements within this area
+            car_elements = []
+            
+            # Try different selectors within the aanbod area
+            selectors_in_area = [
+                'div.each_product_div',
+                'div[class*="each_car_cls"]',
+                'div.col-lg-6',
+                'div[class*="product"]',
+                'div[class*="car"]'
+            ]
+            
+            for selector in selectors_in_area:
+                elements = aanbod_area.select(selector)
+                if elements:
+                    # Filter for actual car listings
+                    for elem in elements:
+                        # Check for car indicators
+                        has_car_link = elem.find('a', href=re.compile(r'/occasions-kopen/.*', re.I))
+                        has_car_image = elem.find('img', src=re.compile(r'/webservices/feed_images/'))
+                        has_porsche_text = any(term in elem.get_text().lower() for term in ['porsche', '911', 'carrera'])
+                        
+                        if has_car_link or has_car_image or has_porsche_text:
+                            car_elements.append(elem)
                     
-                    # Check for car indicators from screenshot structure
-                    has_car_link = elem.find('a', href=re.compile(r'/occasions-kopen/.*porsche.*', re.I))
-                    has_car_image = elem.find('img', src=re.compile(r'/webservices/feed_images/'))
-                    has_porsche_text = any(term in elem_text for term in ['porsche', '911', 'carrera', 'turbo'])
-                    
-                    if has_car_link or has_car_image or has_porsche_text:
-                        valid_cars.append(elem)
-                
-                if valid_cars:
-                    logger.info(f"Found {len(valid_cars)} car elements using selector: {selector}")
-                    return valid_cars
+                    if car_elements:
+                        logger.info(f"Found {len(car_elements)} car elements in aanbod-list-area using {selector}")
+                        return car_elements
+            
+            # If no specific selectors work, get all divs in the area
+            all_divs_in_area = aanbod_area.find_all('div')
+            for div in all_divs_in_area:
+                div_text = div.get_text().lower()
+                # Look for car-specific content
+                if (any(model in div_text for model in ['porsche', '911', 'carrera', 'turbo']) and
+                    any(indicator in div_text for indicator in ['€', 'km', 'jaar']) and
+                    len(div_text.strip()) > 50):
+                    car_elements.append(div)
+            
+            if car_elements:
+                logger.info(f"Found {len(car_elements)} car elements via content analysis in aanbod-list-area")
+                return car_elements[:10]
         
-        # Secondary approach: look for feed_images (car photos)
+        # Secondary approach: look for feed_images anywhere on page
         feed_images = soup.find_all('img', src=re.compile(r'/webservices/feed_images/\d+/'))
         if feed_images:
             logger.info(f"Found {len(feed_images)} car images, extracting containers")
@@ -262,45 +281,24 @@ class KoenExclusiefScraper(BaseDealerScraper):
         # Tertiary approach: look for occasions links
         occasions_links = soup.find_all('a', href=re.compile(r'/occasions-kopen/.*porsche.*', re.I))
         if occasions_links:
-            logger.info(f"Found {len(occasions_links)} occasions links")
+            logger.info(f"Found {len(occasions_links)} Porsche occasions links")
             car_containers = []
             
             for link in occasions_links:
-                # Find parent container
-                container = link.find_parent(['div'], class_=True)
+                container = link.find_parent('div', class_=True)
                 if container and container not in car_containers:
-                    car_containers.append(container)
+                    # Verify this has actual car content
+                    container_text = container.get_text()
+                    if (any(model in container_text.lower() for model in ['911', 'carrera', 'porsche']) and
+                        len(container_text.strip()) > 50):
+                        car_containers.append(container)
             
             if car_containers:
-                logger.info(f"Extracted {len(car_containers)} car containers from links")
+                logger.info(f"Extracted {len(car_containers)} car containers from occasions links")
                 return car_containers
         
-        # Final fallback: look for any divs containing Porsche and price info
-        all_divs = soup.find_all('div')
-        car_containers = []
-        
-        for div in all_divs:
-            div_text = div.get_text().lower()
-            div_classes = ' '.join(div.get('class', []))
-            
-            # Check for Porsche content and pricing
-            has_porsche = any(model in div_text for model in ['porsche', '911', 'carrera', 'turbo', 'cayenne', 'macan'])
-            has_price_info = any(indicator in div_text for indicator in ['€', 'eur', 'carrera', 'achterassturing'])
-            has_reasonable_content = len(div_text.strip()) > 50
-            
-            if has_porsche and has_price_info and has_reasonable_content:
-                car_containers.append(div)
-        
-        # Remove duplicates and nested containers
-        unique_containers = []
-        for container in car_containers:
-            # Check if this container is not contained within another
-            is_nested = any(container in other.descendants for other in unique_containers)
-            if not is_nested:
-                unique_containers.append(container)
-        
-        logger.info(f"Final fallback found {len(unique_containers)} car containers")
-        return unique_containers[:20]
+        logger.info("No car elements found in KoenExclusief")
+        return []
     
     def extract_car_data(self, element) -> Optional[Dict]:
         try:
