@@ -180,12 +180,31 @@ class KoenExclusiefScraper(BaseDealerScraper):
         return "https://www.autowereld.nl/aanbieder/autoservice-koen-exclusief-b-v-1003233/auto.html?il=100"
     
     def scrape_page(self, url: str) -> List[Dict]:
-        """Override scrape_page to handle JavaScript-loaded content"""
+        """Override scrape_page to handle Autowereld with anti-blocking measures"""
         try:
             logger.info(f"Scraping {self.dealer_name}: {url}")
             
             session = requests.Session()
-            session.headers.update(self.headers)
+            # Enhanced headers to avoid 403 blocking
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'nl-NL,nl;q=0.9,en;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Cache-Control': 'max-age=0',
+                'Referer': 'https://www.autowereld.nl/'
+            })
+            
+            # Add human-like delay
+            import time
+            time.sleep(1)
             
             # First try AJAX endpoints
             ajax_cars = self._try_ajax_endpoints(session)
@@ -193,9 +212,38 @@ class KoenExclusiefScraper(BaseDealerScraper):
                 logger.info(f"Found {len(ajax_cars)} cars via AJAX")
                 return ajax_cars
             
-            response = session.get(url, timeout=15)
-            if response.status_code != 200:
-                logger.error(f"Failed to fetch {url}: {response.status_code}")
+            # Try with retries and different user agents
+            max_retries = 3
+            user_agents = [
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            ]
+            
+            response = None
+            for attempt in range(max_retries):
+                try:
+                    if attempt > 0:
+                        session.headers['User-Agent'] = user_agents[attempt % len(user_agents)]
+                        time.sleep(3)  # Longer delay on retries
+                    
+                    response = session.get(url, timeout=20)
+                    
+                    if response.status_code == 403:
+                        logger.warning(f"403 Forbidden on attempt {attempt + 1}")
+                        continue
+                    elif response.status_code == 200:
+                        break
+                    else:
+                        logger.warning(f"Status {response.status_code} on attempt {attempt + 1}")
+                        
+                except requests.exceptions.RequestException as e:
+                    logger.warning(f"Request failed on attempt {attempt + 1}: {str(e)}")
+                    if attempt == max_retries - 1:
+                        raise e
+            
+            if not response or response.status_code != 200:
+                logger.error(f"Failed to fetch {url} after {max_retries} attempts: {response.status_code if response else 'No response'}")
                 return []
             
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -350,68 +398,72 @@ class KoenExclusiefScraper(BaseDealerScraper):
         return car_elements[:10] if car_elements else []
     
     def find_car_elements(self, soup: BeautifulSoup) -> List:
-        # For Autowereld, look for specific car listing elements
-        car_selectors = [
-            '.car-item',
-            '.listing-item',
-            '.vehicle-item',
-            '.search-result-item',
-            '.result-item',
-            '[class*="car-"]',
-            '[class*="vehicle-"]',
-            '[class*="listing-"]'
+        # Based on the screenshot, look for the specific Autowereld structure
+        # Look for divs with class containing "each_product_div" and "each_car_cls"
+        car_elements = []
+        
+        # Primary selector: each_product_div with each_car_cls pattern
+        specific_selectors = [
+            'div[class*="each_product_div"][class*="each_car_cls"]',
+            'div.each_product_div',
+            'div[class*="each_car_cls"]'
         ]
         
-        for selector in car_selectors:
+        for selector in specific_selectors:
             elements = soup.select(selector)
             if elements:
                 logger.info(f"Found {len(elements)} elements with selector: {selector}")
-                # Filter for actual car listings
+                
+                # Validate these are actual car listings
                 valid_cars = []
                 for elem in elements:
-                    elem_text = elem.get_text().lower()
-                    elem_html = str(elem).lower()
+                    # Check for occasions-kopen link and feed_images as seen in screenshot
+                    has_occasions_link = elem.find('a', href=lambda x: x and 'occasions-kopen' in x)
+                    has_feed_image = elem.find('img', src=lambda x: x and 'feed_images' in x)
+                    has_car_text = any(term in elem.get_text().lower() for term in ['porsche', 'mercedes', 'bmw', 'audi'])
                     
-                    # Check for car indicators
-                    has_car_content = any(term in elem_text for term in [
-                        'porsche', 'mercedes', 'bmw', 'audi', 'volkswagen',
-                        'km', 'euro', '€', 'benzine', 'diesel'
-                    ])
-                    
-                    has_car_link = any(term in elem_html for term in [
-                        'occasions', 'auto', 'car', 'voertuig'
-                    ])
-                    
-                    if has_car_content or has_car_link:
+                    if has_occasions_link or has_feed_image or has_car_text:
                         valid_cars.append(elem)
                 
                 if valid_cars:
-                    logger.info(f"Filtered to {len(valid_cars)} valid car elements")
-                    return valid_cars
+                    logger.info(f"Validated {len(valid_cars)} car elements")
+                    car_elements.extend(valid_cars)
         
-        # Fallback: look for divs containing car-related content
-        all_divs = soup.find_all('div')
-        car_divs = []
-        
-        for div in all_divs:
-            div_text = div.get_text().strip()
-            div_html = str(div).lower()
+        # If no specific elements found, try broader search
+        if not car_elements:
+            # Look for any div containing occasions-kopen links
+            occasions_links = soup.find_all('a', href=lambda x: x and 'occasions-kopen' in x)
+            logger.info(f"Found {len(occasions_links)} occasions-kopen links")
             
-            # Must have substantial content and car indicators
-            if (len(div_text) > 100 and 
-                any(term in div_text.lower() for term in ['porsche', 'mercedes', 'bmw', 'audi']) and
-                any(term in div_text.lower() for term in ['€', 'euro', 'km', 'benzine', 'diesel'])):
-                
-                # Check for links to car details
-                has_car_link = div.find('a', href=True)
-                if has_car_link:
-                    # Avoid nested elements
-                    is_nested = any(div in other.descendants for other in car_divs)
-                    if not is_nested:
-                        car_divs.append(div)
+            for link in occasions_links:
+                # Find the parent container that holds the car data
+                container = link.find_parent('div')
+                while container:
+                    # Look for a container with substantial content
+                    container_text = container.get_text().strip()
+                    if (len(container_text) > 50 and 
+                        any(term in container_text.lower() for term in ['porsche', 'mercedes', 'bmw', 'audi']) and
+                        container not in car_elements):
+                        car_elements.append(container)
+                        break
+                    container = container.find_parent('div')
         
-        logger.info(f"Fallback found {len(car_divs)} car divs")
-        return car_divs[:20]  # Limit to avoid processing too many
+        # Final fallback: look for feed_images containers
+        if not car_elements:
+            feed_images = soup.find_all('img', src=lambda x: x and 'feed_images' in x)
+            logger.info(f"Found {len(feed_images)} feed_images")
+            
+            for img in feed_images:
+                container = img.find_parent('div')
+                while container and container not in car_elements:
+                    container_text = container.get_text().strip()
+                    if len(container_text) > 100:  # Substantial content
+                        car_elements.append(container)
+                        break
+                    container = container.find_parent('div')
+        
+        logger.info(f"Total found {len(car_elements)} car elements")
+        return car_elements
     
     def extract_car_data(self, element) -> Optional[Dict]:
         try:
@@ -465,39 +517,76 @@ class KoenExclusiefScraper(BaseDealerScraper):
             return None
     
     def _extract_from_html_element(self, element) -> Optional[Dict]:
-        """Extract car data from HTML element"""
+        """Extract car data from Autowereld HTML element"""
         try:
             text_content = element.get_text()
+            elem_html = str(element)
             
-            # Generate ID from element content or use link if available
-            link = element.find('a', href=True)
-            if link and 'occasions-kopen' in link['href']:
-                # Extract ID from the occasions link
-                link_match = re.search(r'/occasions-kopen/(\d+)-', link['href'])
-                if link_match:
-                    car_id = f"koen_{link_match.group(1)}"
-                else:
-                    car_id = f"koen_link_{hash(link['href']) % 1000000}"
-            else:
-                element_hash = hash(str(element)[:200]) % 1000000
-                car_id = f"koen_html_{element_hash}"
-            
+            # Initialize car data
             car_data = {
-                'autotrack_id': car_id,
-                'make': 'Porsche',
+                'autotrack_id': '',
+                'make': 'Unknown',
                 'model': 'Unknown',
                 'year': None,
                 'mileage': None,
-                'fuel_type': 'Benzine',
-                'description': '',
+                'fuel_type': None,
+                'description': text_content.strip()[:200],
                 'image_url': None,
                 'source_url': '',
                 'price': 0
             }
             
-            # Enhanced model extraction based on screenshot content
-            # Look for specific patterns like "Porsche 911 Cabrio 991 3.0 Carrera GTS"
+            # Extract car ID from any links
+            links = element.find_all('a', href=True)
+            for link in links:
+                href = link.get('href', '')
+                # Look for ID patterns in URLs
+                id_match = re.search(r'(\d{6,})', href)
+                if id_match:
+                    car_data['autotrack_id'] = f"autowereld_{id_match.group(1)}"
+                    if href.startswith('/'):
+                        car_data['source_url'] = f"https://www.autowereld.nl{href}"
+                    else:
+                        car_data['source_url'] = href
+                    break
+            
+            # If no ID found, generate from content hash
+            if not car_data['autotrack_id']:
+                car_data['autotrack_id'] = f"autowereld_{abs(hash(text_content[:100]))}"[:12]
+            
+            # Extract make and model from text
             text_lower = text_content.lower()
+            
+            # Common makes detection
+            makes = {
+                'porsche': 'Porsche',
+                'mercedes': 'Mercedes-Benz', 
+                'bmw': 'BMW',
+                'audi': 'Audi',
+                'volkswagen': 'Volkswagen',
+                'ford': 'Ford',
+                'toyota': 'Toyota',
+                'peugeot': 'Peugeot',
+                'renault': 'Renault',
+                'opel': 'Opel'
+            }
+            
+            # Find make
+            for key, value in makes.items():
+                if key in text_lower:
+                    car_data['make'] = value
+                    break
+            
+            # Extract Porsche models specifically (since this is KoenExclusief)
+            if car_data['make'] == 'Porsche':
+                porsche_models = ['911', 'carrera', 'turbo', 'gt3', 'gts', 'cayenne', 'macan', 'panamera', 'boxster', 'cayman']
+                for model_name in porsche_models:
+                    if model_name in text_lower:
+                        if model_name == '911':
+                            car_data['model'] = '911'
+                        else:
+                            car_data['model'] = model_name.title()
+                        break
             
             # Extract specific model from common Porsche naming patterns
             if '911' in text_lower:
