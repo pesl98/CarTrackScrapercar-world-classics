@@ -122,6 +122,7 @@ function displayCars(cars) {
                 <td>
                     <div class="fw-bold">${escapeHtml(car.make)}</div>
                     <div class="text-muted small">${escapeHtml(car.model)}</div>
+                    <div class="dealer-badge">${escapeHtml(car.dealer_name || 'Unknown')}</div>
                 </td>
                 <td>${car.year || '-'}</td>
                 <td>

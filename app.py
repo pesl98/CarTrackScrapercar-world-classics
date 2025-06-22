@@ -11,9 +11,10 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
 
-# Initialize database and scraper
+# Initialize database and scrapers
 db = Database()
-scraper = CarScraper(db)
+scraper = CarScraper(db)  # Keep for backwards compatibility
+multi_scraper = MultiDealerScraper(db)
 
 @app.route('/')
 def index():
@@ -52,12 +53,12 @@ def get_stats():
 
 @app.route('/api/scrape', methods=['POST'])
 def manual_scrape():
-    """Manually trigger a scrape"""
+    """Manually trigger a scrape from all dealers"""
     try:
-        result = scraper.scrape_cars()
+        new_cars, updated_cars = multi_scraper.scrape_all_dealers()
         return jsonify({
             'success': True,
-            'message': f'Scraped {result["new_cars"]} new cars, updated {result["updated_cars"]} existing cars'
+            'message': f'Multi-dealer scraping completed. Found {new_cars} new cars and updated {updated_cars} existing cars from all dealers.'
         })
     except Exception as e:
         return jsonify({
@@ -237,7 +238,7 @@ if __name__ == '__main__':
     db.init_db()
     
     # Start the scheduler for automated scraping
-    start_scheduler(scraper)
+    start_scheduler(multi_scraper)
     
     # Run the Flask app
     app.run(host='0.0.0.0', port=5000, debug=True)
