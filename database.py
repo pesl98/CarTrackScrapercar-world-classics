@@ -306,11 +306,17 @@ class Database:
         avg_days_result = cursor.fetchone()
         avg_days_on_market = round(avg_days_result['avg_days'] or 0, 1)
         
-        # Price changes in last 7 days
+        # Actual price changes in last 7 days (not just price records)
         cursor.execute('''
             SELECT COUNT(*) as price_changes
-            FROM price_history
-            WHERE recorded_at > datetime('now', '-7 days')
+            FROM price_history ph1
+            WHERE ph1.recorded_at > datetime('now', '-7 days')
+            AND EXISTS (
+                SELECT 1 FROM price_history ph2 
+                WHERE ph2.car_id = ph1.car_id 
+                AND ph2.recorded_at < ph1.recorded_at 
+                AND ph2.price != ph1.price
+            )
         ''')
         recent_price_changes = cursor.fetchone()['price_changes']
         
