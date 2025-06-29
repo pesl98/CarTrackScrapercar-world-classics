@@ -328,6 +328,15 @@ class Database:
         avg_price_result = cursor.fetchone()
         avg_price = round(avg_price_result['avg_price'] or 0)
         
+        # Cars sold in last 7 days
+        cursor.execute('''
+            SELECT COUNT(*) as recent_sold
+            FROM cars 
+            WHERE is_sold = TRUE 
+            AND sold_date > datetime('now', '-7 days')
+        ''')
+        recent_sold = cursor.fetchone()['recent_sold']
+        
         conn.close()
         
         return {
@@ -336,5 +345,6 @@ class Database:
             'sold_cars': sold_cars,
             'avg_days_on_market': avg_days_on_market,
             'recent_price_changes': recent_price_changes,
-            'avg_price': avg_price
+            'avg_price': avg_price,
+            'recent_sold': recent_sold
         }

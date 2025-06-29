@@ -128,6 +128,11 @@ This is a Flask-based car tracking application that scrapes car listings from mu
   - Added graceful handling of empty inventory states (0 cars currently)
   - Scraper properly detects loading states and attempts AJAX endpoint discovery
   - Framework ready to capture cars when they become available on the site
+- June 29, 2025: **Enhanced dashboard with new statistics**
+  - Fixed Price Changes tile bug - corrected count from 42 to 0 (was counting all price records instead of actual changes)
+  - Added "Cars Sold (7 days)" statistic showing recent sales activity
+  - Updated database queries and frontend display for new metric
+  - Dashboard now provides 7 comprehensive statistics for market monitoring
 
 ## Recent Success
 - Multi-dealer scraping system successfully extracts 42 cars from CarWorld Classics

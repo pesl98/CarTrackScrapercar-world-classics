@@ -45,6 +45,7 @@ async function loadDashboardStats() {
         document.getElementById('stat-days').textContent = stats.avg_days_on_market;
         document.getElementById('stat-changes').textContent = formatNumber(stats.recent_price_changes);
         document.getElementById('stat-price').textContent = '€' + formatNumber(stats.avg_price);
+        document.getElementById('stat-recent-sold').textContent = formatNumber(stats.recent_sold);
         
     } catch (error) {
         console.error('Error loading dashboard stats:', error);
