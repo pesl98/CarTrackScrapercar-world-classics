@@ -337,6 +337,19 @@ class Database:
         ''')
         recent_sold = cursor.fetchone()['recent_sold']
         
+        # Days since last car was sold
+        cursor.execute('''
+            SELECT 
+                CASE 
+                    WHEN MAX(sold_date) IS NULL THEN NULL
+                    ELSE ROUND(julianday('now') - julianday(MAX(sold_date)), 0)
+                END as days_since_last_sold
+            FROM cars 
+            WHERE is_sold = TRUE
+        ''')
+        days_since_last_sold_result = cursor.fetchone()
+        days_since_last_sold = days_since_last_sold_result['days_since_last_sold']
+        
         conn.close()
         
         return {
@@ -346,5 +359,6 @@ class Database:
             'avg_days_on_market': avg_days_on_market,
             'recent_price_changes': recent_price_changes,
             'avg_price': avg_price,
-            'recent_sold': recent_sold
+            'recent_sold': recent_sold,
+            'days_since_last_sold': days_since_last_sold
         }

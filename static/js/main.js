@@ -46,6 +46,7 @@ async function loadDashboardStats() {
         document.getElementById('stat-changes').textContent = formatNumber(stats.recent_price_changes);
         document.getElementById('stat-price').textContent = '€' + formatNumber(stats.avg_price);
         document.getElementById('stat-recent-sold').textContent = formatNumber(stats.recent_sold);
+        document.getElementById('stat-days-since-sold').textContent = stats.days_since_last_sold !== null ? stats.days_since_last_sold : 'N/A';
         
     } catch (error) {
         console.error('Error loading dashboard stats:', error);
