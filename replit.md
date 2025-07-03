@@ -132,8 +132,9 @@ This is a Flask-based car tracking application that scrapes car listings from mu
   - Fixed Price Changes tile bug - corrected count from 42 to 0 (was counting all price records instead of actual changes)
   - Added "Cars Sold (7 days)" statistic showing recent sales activity
   - Added "Days Since Last Sold" statistic to track sales recency
+  - Added "Cars Sold (14 days)" statistic for broader sales trend analysis
   - Updated database queries and frontend display for new metrics
-  - Dashboard now provides 8 comprehensive statistics for market monitoring
+  - Dashboard now provides 9 comprehensive statistics for market monitoring
 
 ## Recent Success
 - Multi-dealer scraping system successfully extracts 42 cars from CarWorld Classics

@@ -337,6 +337,15 @@ class Database:
         ''')
         recent_sold = cursor.fetchone()['recent_sold']
         
+        # Cars sold in last 14 days
+        cursor.execute('''
+            SELECT COUNT(*) as recent_sold_14d
+            FROM cars 
+            WHERE is_sold = TRUE 
+            AND sold_date > datetime('now', '-14 days')
+        ''')
+        recent_sold_14d = cursor.fetchone()['recent_sold_14d']
+        
         # Days since last car was sold
         cursor.execute('''
             SELECT 
@@ -360,5 +369,6 @@ class Database:
             'recent_price_changes': recent_price_changes,
             'avg_price': avg_price,
             'recent_sold': recent_sold,
+            'recent_sold_14d': recent_sold_14d,
             'days_since_last_sold': days_since_last_sold
         }
