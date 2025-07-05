@@ -346,6 +346,14 @@ class Database:
         ''')
         recent_sold_14d = cursor.fetchone()['recent_sold_14d']
         
+        # New cars added in last 14 days
+        cursor.execute('''
+            SELECT COUNT(*) as new_cars_14d
+            FROM cars 
+            WHERE first_seen > datetime('now', '-14 days')
+        ''')
+        new_cars_14d = cursor.fetchone()['new_cars_14d']
+        
         # Days since last car was sold
         cursor.execute('''
             SELECT 
@@ -370,5 +378,6 @@ class Database:
             'avg_price': avg_price,
             'recent_sold': recent_sold,
             'recent_sold_14d': recent_sold_14d,
+            'new_cars_14d': new_cars_14d,
             'days_since_last_sold': days_since_last_sold
         }

@@ -47,6 +47,7 @@ async function loadDashboardStats() {
         document.getElementById('stat-price').textContent = '€' + formatNumber(stats.avg_price);
         document.getElementById('stat-recent-sold').textContent = formatNumber(stats.recent_sold);
         document.getElementById('stat-recent-sold-14d').textContent = formatNumber(stats.recent_sold_14d);
+        document.getElementById('stat-new-cars-14d').textContent = formatNumber(stats.new_cars_14d);
         document.getElementById('stat-days-since-sold').textContent = stats.days_since_last_sold !== null ? stats.days_since_last_sold : 'N/A';
         
     } catch (error) {
