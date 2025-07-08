@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a Flask-based car tracking application that scrapes car listings from multiple dealers (CarWorld Classics and Koen Exclusief) and monitors price changes over time. The application provides a web dashboard for viewing car inventory, tracking price history, monitoring market trends, and exporting data to CSV format.
+This is a Flask-based car tracking application that scrapes car listings from CarWorldClassics.com and monitors price changes over time. The application provides a web dashboard for viewing car inventory, tracking price history, monitoring market trends, and exporting data to CSV format.
 
 ## System Architecture
 
@@ -77,13 +77,11 @@ This is a Flask-based car tracking application that scrapes car listings from mu
 - **Bootstrap 5**: CSS framework for responsive design
 - **Font Awesome**: Icon library for UI elements
 
-### Target Websites
-- **CarWorld Classics**: Primary data source for classic and luxury cars
+### Target Website
+- **CarWorld Classics**: Data source for classic and luxury cars
   - Base URL: https://www.carworldclassics.com/aanbod
-  - Successfully scraping 40+ cars per session
-- **Koen Exclusief**: Secondary dealer specializing in luxury vehicles
-  - Base URL: https://koenexclusief.nl/aanbod
-  - Framework implemented for future expansion
+  - Successfully scraping 45+ cars per session
+  - Comprehensive inventory tracking with price monitoring
 
 ## Deployment Strategy
 
@@ -136,18 +134,20 @@ This is a Flask-based car tracking application that scrapes car listings from mu
   - Added "New Cars (14 days)" statistic to track inventory additions
   - Updated database queries and frontend display for new metrics
   - Dashboard now provides 10 comprehensive statistics for market monitoring
+- July 8, 2025: **Removed KoenExclusief scraper entirely**
+  - Simplified system to focus exclusively on CarWorldClassics
+  - Removed all KoenExclusief/Autowereld scraping code and related complexity
+  - Updated documentation to reflect single-dealer focus
+  - Streamlined multi_dealer_scraper.py for better maintainability
+  - System now cleanly operates with only CarWorldClassics as data source
 
 ## Recent Success
-- Multi-dealer scraping system successfully extracts 42 cars from CarWorld Classics
-- CarWorld Classics scraper fully operational with robust pagination and data extraction
-- Database correctly stores dealer information and prevents duplicates
-- Frontend displays dealer badges with color-coded identification
-- Price change tracking works across multiple dealers
-- CSV export includes dealer information
-- **KoenExclusief Challenge**: Autowereld.nl protected by DPG Media's enterprise WAF (Web Application Firewall)
-  - All automated requests blocked with 403 errors (including homepage access)
-  - Investigated multiple bypass techniques: gradual approach, mobile headers, alternative domains, cache access
-  - WAF protection too sophisticated for standard scraping methods
+- CarWorldClassics scraping system successfully extracts 45 cars per session
+- Fully operational scraper with robust pagination and data extraction
+- Database correctly stores car information and prevents duplicates
+- Price change tracking monitors market fluctuations
+- CSV export functionality for data analysis
+- Dashboard provides comprehensive market statistics and insights
 
 ## Adapting for Other Car Dealers
 
@@ -218,9 +218,8 @@ In `multi_dealer_scraper.py`, add your new scraper to the `MultiDealerScraper` c
 class MultiDealerScraper:
     def __init__(self, database):
         self.database = database
-        self.scrapers = [
+        self.dealers = [
             CarWorldClassicsScraper(),
-            KoenExclusiefScraper(),
             YourDealerScraper(),  # Add your new scraper here
         ]
 ```
