@@ -140,6 +140,12 @@ This is a Flask-based car tracking application that scrapes car listings from Ca
   - Updated documentation to reflect single-dealer focus
   - Streamlined multi_dealer_scraper.py for better maintainability
   - System now cleanly operates with only CarWorldClassics as data source
+- July 9, 2025: **Fixed "Days on Market" calculation bug**
+  - Days on market counter now correctly freezes when cars are sold
+  - Previously continued counting after sale date, now stops at sold_date
+  - Updated both car listing display and dashboard statistics calculation
+  - Example: Car sold after 15 days shows "15 days" permanently, not increasing count
+  - Applies to both individual car records and average days on market statistic
 
 ## Recent Success
 - CarWorldClassics scraping system successfully extracts 45 cars per session

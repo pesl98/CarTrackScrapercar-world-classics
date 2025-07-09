@@ -242,7 +242,10 @@ class Database:
         # Get cars
         cursor.execute(f'''
             SELECT *,
-                   (julianday('now') - julianday(first_seen)) as days_on_market,
+                   CASE 
+                       WHEN is_sold THEN (julianday(sold_date) - julianday(first_seen))
+                       ELSE (julianday('now') - julianday(first_seen))
+                   END as days_on_market,
                    CASE 
                        WHEN is_sold THEN 'Sold'
                        ELSE 'Active'
@@ -298,10 +301,15 @@ class Database:
         cursor.execute('SELECT COUNT(*) as sold FROM cars WHERE is_sold = TRUE')
         sold_cars = cursor.fetchone()['sold']
         
-        # Average days on market
+        # Average days on market (for all cars, using correct calculation)
         cursor.execute('''
-            SELECT AVG(julianday('now') - julianday(first_seen)) as avg_days
-            FROM cars WHERE is_sold = FALSE
+            SELECT AVG(
+                CASE 
+                    WHEN is_sold THEN (julianday(sold_date) - julianday(first_seen))
+                    ELSE (julianday('now') - julianday(first_seen))
+                END
+            ) as avg_days
+            FROM cars
         ''')
         avg_days_result = cursor.fetchone()
         avg_days_on_market = round(avg_days_result['avg_days'] or 0, 1)
