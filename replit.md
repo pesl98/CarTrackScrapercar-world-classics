@@ -146,6 +146,12 @@ This is a Flask-based car tracking application that scrapes car listings from Ca
   - Updated both car listing display and dashboard statistics calculation
   - Example: Car sold after 15 days shows "15 days" permanently, not increasing count
   - Applies to both individual car records and average days on market statistic
+- July 9, 2025: **Added Total Value statistic to dashboard**
+  - Confirmed average price calculation uses only active cars (not sold)
+  - Added "Total Value" statistic showing sum of all active car prices
+  - Currently showing €4,723,039 total value across 35 active cars
+  - New statistic displayed in yellow tile with coins icon
+  - Updated both backend database queries and frontend display
 
 ## Recent Success
 - CarWorldClassics scraping system successfully extracts 45 cars per session

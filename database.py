@@ -328,13 +328,21 @@ class Database:
         ''')
         recent_price_changes = cursor.fetchone()['price_changes']
         
-        # Average price
+        # Average price (active cars only)
         cursor.execute('''
             SELECT AVG(current_price) as avg_price
             FROM cars WHERE is_sold = FALSE AND current_price > 0
         ''')
         avg_price_result = cursor.fetchone()
         avg_price = round(avg_price_result['avg_price'] or 0)
+        
+        # Total value of all active cars
+        cursor.execute('''
+            SELECT SUM(current_price) as total_value
+            FROM cars WHERE is_sold = FALSE AND current_price > 0
+        ''')
+        total_value_result = cursor.fetchone()
+        total_value = round(total_value_result['total_value'] or 0)
         
         # Cars sold in last 7 days
         cursor.execute('''
@@ -384,6 +392,7 @@ class Database:
             'avg_days_on_market': avg_days_on_market,
             'recent_price_changes': recent_price_changes,
             'avg_price': avg_price,
+            'total_value': total_value,
             'recent_sold': recent_sold,
             'recent_sold_14d': recent_sold_14d,
             'new_cars_14d': new_cars_14d,
