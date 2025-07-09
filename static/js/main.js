@@ -94,7 +94,7 @@ function displayCars(cars) {
     if (cars.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="9" class="text-center py-5">
+                <td colspan="10" class="text-center py-5">
                     <div class="empty-state">
                         <i class="fas fa-car-side text-muted"></i>
                         <h5>No cars found</h5>
@@ -121,6 +121,13 @@ function displayCars(cars) {
         if (daysOnMarket > 60) daysClass += ' very-long-term';
         else if (daysOnMarket > 30) daysClass += ' long-term';
         
+        // Format first seen date
+        const firstSeenDate = car.first_seen ? new Date(car.first_seen).toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        }) : '-';
+        
         return `
             <tr class="fade-in">
                 <td>${imageHtml}</td>
@@ -135,6 +142,9 @@ function displayCars(cars) {
                 </td>
                 <td>${car.mileage ? formatNumber(car.mileage) + ' km' : '-'}</td>
                 <td>${car.fuel_type || '-'}</td>
+                <td>
+                    <span class="text-muted small">${firstSeenDate}</span>
+                </td>
                 <td>
                     <span class="${daysClass}">${daysOnMarket} days</span>
                 </td>

@@ -152,6 +152,12 @@ This is a Flask-based car tracking application that scrapes car listings from Ca
   - Currently showing €4,723,039 total value across 35 active cars
   - New statistic displayed in yellow tile with coins icon
   - Updated both backend database queries and frontend display
+- July 9, 2025: **Added "First Seen" column to car listings table**
+  - Added new column showing date when car was first detected by scraper
+  - Displays in DD/MM/YYYY format for easy reading
+  - Column positioned between "Fuel" and "Days on Market"
+  - Updated table structure and JavaScript to handle 10 columns instead of 9
+  - Provides valuable insight into when cars entered the market
 
 ## Recent Success
 - CarWorldClassics scraping system successfully extracts 45 cars per session
