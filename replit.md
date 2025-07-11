@@ -158,6 +158,13 @@ This is a Flask-based car tracking application that scrapes car listings from Ca
   - Column positioned between "Fuel" and "Days on Market"
   - Updated table structure and JavaScript to handle 10 columns instead of 9
   - Provides valuable insight into when cars entered the market
+- July 11, 2025: **Fixed critical scraping issue**
+  - Updated CSS selector from `div.car-item` to `div.col-xl-6.col-lg-6.mb-5`
+  - Fixed data extraction methods for new HTML structure
+  - Resolved database key mismatch (current_price vs price)
+  - Scraper now successfully finds 37 car elements and processes 34 valid cars
+  - Added 1 new car and updated 29 existing cars during test run
+  - System now properly detects sold cars and maintains accurate inventory
 
 ## Recent Success
 - CarWorldClassics scraping system successfully extracts 45 cars per session

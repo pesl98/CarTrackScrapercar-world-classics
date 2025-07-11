@@ -83,36 +83,40 @@ class CarWorldClassicsScraper(BaseDealerScraper):
         return f"{self.base_url}/aanbod?page={page}"
     
     def find_car_elements(self, soup: BeautifulSoup) -> List:
-        # CarWorld Classics uses div.car-item for each car listing
-        car_elements = soup.find_all('div', class_='car-item')
+        # CarWorld Classics uses div elements with col-xl-6 col-lg-6 mb-5 classes
+        car_elements = soup.find_all('div', class_='col-xl-6 col-lg-6 mb-5')
         return car_elements
     
     def extract_car_data(self, element) -> Optional[Dict]:
         """Extract car data from CarWorld Classics HTML element"""
         try:
-            # Extract basic information
-            title_elem = element.find('h3', class_='car-title')
-            title = title_elem.get_text(strip=True) if title_elem else ''
+            # Extract make (h6 tag)
+            make_elem = element.find('h6')
+            make = make_elem.get_text(strip=True) if make_elem else ''
             
-            # Extract price
-            price_elem = element.find('span', class_='price')
-            price_text = price_elem.get_text(strip=True) if price_elem else '0'
+            # Extract model (p tag after h6)
+            model_elem = element.find('p')
+            model = model_elem.get_text(strip=True) if model_elem else ''
+            
+            # Extract price (second h6 tag)
+            price_elems = element.find_all('h6')
+            price_text = price_elems[1].get_text(strip=True) if len(price_elems) > 1 else '0'
             price = self._extract_price(price_text)
             
-            # Extract make and model from title
-            make, model = self._extract_make_model(title)
-            
-            # Extract year
-            year = self._extract_year(title)
-            
-            # Extract mileage
-            mileage_elem = element.find('span', class_='mileage')
-            mileage_text = mileage_elem.get_text(strip=True) if mileage_elem else ''
-            mileage = self._extract_mileage(mileage_text)
-            
-            # Extract fuel type
-            fuel_elem = element.find('span', class_='fuel')
-            fuel_type = fuel_elem.get_text(strip=True) if fuel_elem else None
+            # Extract mileage and year from table
+            table_data = element.find('table')
+            mileage = None
+            year = None
+            if table_data:
+                tds = table_data.find_all('td')
+                if len(tds) >= 2:
+                    # First td contains mileage
+                    mileage_text = tds[0].get_text(strip=True)
+                    mileage = self._extract_mileage(mileage_text)
+                    
+                    # Second td contains year
+                    year_text = tds[1].get_text(strip=True)
+                    year = self._extract_year(year_text)
             
             # Extract image URL
             img_elem = element.find('img')
@@ -125,13 +129,16 @@ class CarWorldClassicsScraper(BaseDealerScraper):
             car_url = link_elem.get('href') if link_elem else ''
             autotrack_id = self._extract_car_id(car_url)
             
+            # Create full title
+            title = f"{make} {model}".strip()
+            
             car_data = {
                 'autotrack_id': autotrack_id,
                 'make': make,
                 'model': model,
                 'year': year,
                 'mileage': mileage,
-                'fuel_type': fuel_type,
+                'fuel_type': None,  # Not available in this structure
                 'description': title,
                 'image_url': image_url,
                 'price': price,
@@ -139,7 +146,7 @@ class CarWorldClassicsScraper(BaseDealerScraper):
             }
             
             # Only return if we have valid data
-            if car_data['price'] > 0 and car_data['make'] != 'Unknown':
+            if car_data['price'] > 0 and car_data['make'] and car_data['autotrack_id']:
                 return car_data
             
             return None
@@ -178,12 +185,18 @@ class CarWorldClassicsScraper(BaseDealerScraper):
         
         return 'Unknown', 'Unknown'
     
-    def _extract_year(self, title: str) -> Optional[int]:
-        """Extract year from title"""
-        year_match = re.search(r'(19|20)\d{2}', title)
+    def _extract_year(self, text: str) -> Optional[int]:
+        """Extract year from text (handles both MM-YYYY and YYYY formats)"""
+        # Look for MM-YYYY format first
+        year_match = re.search(r'\b\d{2}-(\d{4})\b', text)
+        if year_match:
+            return int(year_match.group(1))
+        
+        # Look for 4-digit year (1900-2030)
+        year_match = re.search(r'(19|20)\d{2}', text)
         if year_match:
             year = int(year_match.group())
-            if 1900 <= year <= 2024:
+            if 1900 <= year <= 2030:
                 return year
         return None
     
