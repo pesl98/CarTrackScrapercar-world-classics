@@ -157,13 +157,20 @@ class CarWorldClassicsScraper(BaseDealerScraper):
     
     def _extract_price(self, price_text: str) -> int:
         """Extract price from text"""
-        # Remove currency symbols and spaces
-        price_clean = re.sub(r'[€$,.\s]', '', price_text)
+        if not price_text:
+            return 0
         
-        # Extract numbers
-        price_match = re.search(r'(\d+)', price_clean)
+        # Look for price patterns like "€ 289.992,-" or "€25,000"
+        price_match = re.search(r'€\s*([\d.,]+)(?:,-)?', price_text)
         if price_match:
-            return int(price_match.group(1))
+            price_str = price_match.group(1)
+            # Remove thousand separators (periods and commas)
+            price_str = price_str.replace('.', '').replace(',', '')
+            try:
+                return int(price_str)
+            except ValueError:
+                pass
+        
         return 0
     
     def _extract_make_model(self, title: str) -> tuple:

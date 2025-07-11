@@ -165,6 +165,9 @@ This is a Flask-based car tracking application that scrapes car listings from Ca
   - Scraper now successfully finds 37 car elements and processes 34 valid cars
   - Added 1 new car and updated 29 existing cars during test run
   - System now properly detects sold cars and maintains accurate inventory
+  - Fixed price extraction regex to handle European format (€ 289.992,-)
+  - Successfully found and tracked the €109,911 car that was previously missing
+  - Updated car status logic to properly mark cars as active when they reappear
 
 ## Recent Success
 - CarWorldClassics scraping system successfully extracts 45 cars per session
