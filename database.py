@@ -301,18 +301,27 @@ class Database:
         cursor.execute('SELECT COUNT(*) as sold FROM cars WHERE is_sold = TRUE')
         sold_cars = cursor.fetchone()['sold']
         
-        # Average days on market (for all cars, using correct calculation)
+        # Average days on market for all cars
         cursor.execute('''
             SELECT AVG(
                 CASE 
                     WHEN is_sold THEN (julianday(sold_date) - julianday(first_seen))
                     ELSE (julianday('now') - julianday(first_seen))
                 END
-            ) as avg_days
+            ) as avg_days_all
             FROM cars
         ''')
-        avg_days_result = cursor.fetchone()
-        avg_days_on_market = round(avg_days_result['avg_days'] or 0, 1)
+        avg_days_all_result = cursor.fetchone()
+        avg_days_on_market_all = round(avg_days_all_result['avg_days_all'] or 0, 1)
+        
+        # Average days on market for active cars only
+        cursor.execute('''
+            SELECT AVG(julianday('now') - julianday(first_seen)) as avg_days_active
+            FROM cars
+            WHERE is_sold = FALSE
+        ''')
+        avg_days_active_result = cursor.fetchone()
+        avg_days_on_market_active = round(avg_days_active_result['avg_days_active'] or 0, 1)
         
         # Actual price changes in last 7 days (not just price records)
         cursor.execute('''
@@ -389,7 +398,8 @@ class Database:
             'total_cars': total_cars,
             'active_cars': active_cars,
             'sold_cars': sold_cars,
-            'avg_days_on_market': avg_days_on_market,
+            'avg_days_on_market_all': avg_days_on_market_all,
+            'avg_days_on_market_active': avg_days_on_market_active,
             'recent_price_changes': recent_price_changes,
             'avg_price': avg_price,
             'total_value': total_value,

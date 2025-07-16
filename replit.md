@@ -168,6 +168,12 @@ This is a Flask-based car tracking application that scrapes car listings from Ca
   - Fixed price extraction regex to handle European format (€ 289.992,-)
   - Successfully found and tracked the €109,911 car that was previously missing
   - Updated car status logic to properly mark cars as active when they reappear
+- July 16, 2025: **Added separate average days statistics**
+  - Split "Avg Days" into two separate statistics for better clarity
+  - "Avg Days (Active)" shows average days only for cars currently online (21.3 days)
+  - "Avg Days (All)" shows average days for all cars including sold ones (18.5 days)
+  - Updated dashboard layout with new teal-colored tile for "Avg Days (All)"
+  - Active cars tend to stay online longer than the overall average, providing market insights
 
 ## Recent Success
 - CarWorldClassics scraping system successfully extracts 45 cars per session

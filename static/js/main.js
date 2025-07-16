@@ -42,7 +42,8 @@ async function loadDashboardStats() {
         document.getElementById('stat-total').textContent = formatNumber(stats.total_cars);
         document.getElementById('stat-active').textContent = formatNumber(stats.active_cars);
         document.getElementById('stat-sold').textContent = formatNumber(stats.sold_cars);
-        document.getElementById('stat-days').textContent = stats.avg_days_on_market;
+        document.getElementById('stat-days-active').textContent = stats.avg_days_on_market_active;
+        document.getElementById('stat-days-all').textContent = stats.avg_days_on_market_all;
         document.getElementById('stat-changes').textContent = formatNumber(stats.recent_price_changes);
         document.getElementById('stat-price').textContent = '€' + formatNumber(stats.avg_price);
         document.getElementById('stat-total-value').textContent = '€' + formatNumber(stats.total_value);
