@@ -174,6 +174,12 @@ This is a Flask-based car tracking application that scrapes car listings from Ca
   - "Avg Days (All)" shows average days for all cars including sold ones (18.5 days)
   - Updated dashboard layout with new teal-colored tile for "Avg Days (All)"
   - Active cars tend to stay online longer than the overall average, providing market insights
+- July 16, 2025: **Enhanced price changes filter for meaningful tracking**
+  - Updated price changes to only show significant changes larger than €100
+  - Filters out minor price fluctuations and display inconsistencies
+  - Reduced noise from 33 minor changes to 8 meaningful price adjustments
+  - Applied to both dashboard statistics and price changes modal display
+  - Provides cleaner market trend analysis focused on substantial price movements
 
 ## Recent Success
 - CarWorldClassics scraping system successfully extracts 45 cars per session

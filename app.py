@@ -103,7 +103,7 @@ def get_price_changes():
                     AND ph3.recorded_at < ph1.recorded_at
                 )
             WHERE ph2.price IS NOT NULL 
-                AND ph2.price != ph1.price 
+                AND ABS(ph2.price - ph1.price) > 100
                 AND ph1.price > 0 
                 AND ph2.price > 0
             ORDER BY ph1.recorded_at DESC
