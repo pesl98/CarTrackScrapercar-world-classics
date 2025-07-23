@@ -23,13 +23,15 @@ def index():
 
 @app.route('/api/cars')
 def get_cars():
-    """API endpoint to get all cars with pagination and filtering"""
+    """API endpoint to get all cars with pagination, filtering, and sorting"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     search = request.args.get('search', '')
     status = request.args.get('status', 'all')  # all, active, sold
+    sort_by = request.args.get('sort_by', 'first_seen')  # first_seen, current_price, days_on_market, make, model, year
+    sort_order = request.args.get('sort_order', 'desc')  # asc, desc
     
-    cars = db.get_cars_with_filters(page, per_page, search, status)
+    cars = db.get_cars_with_filters(page, per_page, search, status, sort_by, sort_order)
     return jsonify(cars)
 
 @app.route('/api/car/<int:car_id>')

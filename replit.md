@@ -180,6 +180,12 @@ This is a Flask-based car tracking application that scrapes car listings from Ca
   - Reduced noise from 33 minor changes to 8 meaningful price adjustments
   - Applied to both dashboard statistics and price changes modal display
   - Provides cleaner market trend analysis focused on substantial price movements
+- July 23, 2025: **Added sorting functionality for car listings**
+  - Added dropdown controls for sorting by price, days on market, make, model, year, or date added
+  - Users can sort in ascending or descending order using directional arrows
+  - Updated backend database queries to support dynamic sorting with security validation
+  - Enhanced frontend with intuitive sorting controls in the filter bar
+  - Improves data discovery and market analysis capabilities
 
 ## Recent Success
 - CarWorldClassics scraping system successfully extracts 45 cars per session

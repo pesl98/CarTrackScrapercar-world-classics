@@ -3,6 +3,8 @@ let currentPage = 1;
 let currentPerPage = 20;
 let currentSearch = '';
 let currentStatus = 'all';
+let currentSortBy = 'first_seen';
+let currentSortOrder = 'desc';
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -24,6 +26,20 @@ document.addEventListener('DOMContentLoaded', function() {
     // Status filter change handler
     document.getElementById('statusFilter').addEventListener('change', function() {
         currentStatus = this.value;
+        currentPage = 1;
+        loadCars();
+    });
+    
+    // Sort by change handler
+    document.getElementById('sortBySelect').addEventListener('change', function() {
+        currentSortBy = this.value;
+        currentPage = 1;
+        loadCars();
+    });
+    
+    // Sort order change handler
+    document.getElementById('sortOrderSelect').addEventListener('change', function() {
+        currentSortOrder = this.value;
         currentPage = 1;
         loadCars();
     });
@@ -67,7 +83,9 @@ async function loadCars() {
             page: currentPage,
             per_page: currentPerPage,
             search: currentSearch,
-            status: currentStatus
+            status: currentStatus,
+            sort_by: currentSortBy,
+            sort_order: currentSortOrder
         });
         
         const response = await fetch(`/api/cars?${params}`);
@@ -251,6 +269,8 @@ function changePerPage() {
 function applyFilters() {
     currentSearch = document.getElementById('searchInput').value;
     currentStatus = document.getElementById('statusFilter').value;
+    currentSortBy = document.getElementById('sortBySelect').value;
+    currentSortOrder = document.getElementById('sortOrderSelect').value;
     currentPage = 1;
     loadCars();
 }

@@ -208,7 +208,7 @@ class Database:
         if sold_count > 0:
             logger.info(f"Marked {sold_count} cars as sold")
     
-    def get_cars_with_filters(self, page=1, per_page=20, search='', status='all'):
+    def get_cars_with_filters(self, page=1, per_page=20, search='', status='all', sort_by='first_seen', sort_order='desc'):
         """Get cars with pagination and filtering"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -231,6 +231,24 @@ class Database:
         
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
+        # Validate and build ORDER BY clause
+        valid_sort_columns = {
+            'first_seen': 'first_seen',
+            'current_price': 'current_price', 
+            'days_on_market': 'days_on_market',
+            'make': 'make',
+            'model': 'model',
+            'year': 'year'
+        }
+        
+        if sort_by not in valid_sort_columns:
+            sort_by = 'first_seen'
+        
+        if sort_order.lower() not in ['asc', 'desc']:
+            sort_order = 'desc'
+            
+        sort_column = valid_sort_columns[sort_by]
+        
         # Get total count
         cursor.execute(f'''
             SELECT COUNT(*) as total
@@ -252,7 +270,7 @@ class Database:
                    END as status
             FROM cars
             WHERE {where_clause}
-            ORDER BY first_seen DESC
+            ORDER BY {sort_column} {sort_order.upper()}
             LIMIT ? OFFSET ?
         ''', params + [per_page, offset])
         
