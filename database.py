@@ -5,6 +5,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Cars missing from a scrape are only marked sold after this grace period.
+# Last_seen must be older than SOLD_GRACE_DAYS before mark_cars_as_sold applies.
+SOLD_GRACE_DAYS = 2
+
+# Skip sold-marking when the scrape looks incomplete vs current active inventory.
+# Zero listings, or fewer than this share of the dealer's active cars, is treated
+# as a failed/partial scrape rather than a mass sale.
+INCOMPLETE_SCRAPE_RATIO = 0.70
+
 class Database:
     def __init__(self, db_path='car_tracker.db'):
         self.db_path = db_path
@@ -158,22 +167,85 @@ class Database:
         
         logger.info(f"Updated price for car ID {car_id} to {new_price}")
     
-    def update_car_last_seen(self, car_id):
-        """Update last seen timestamp"""
+    def touch_car_seen(self, car_id):
+        """Record that a listing was seen on the current scrape.
+
+        Always updates last_seen. If the car was marked sold (it disappeared
+        and later reappeared), clear is_sold / sold_date and log reactivation.
+        """
         conn = self.get_connection()
         cursor = conn.cursor()
-        
-        cursor.execute('''
-            UPDATE cars 
-            SET last_seen = CURRENT_TIMESTAMP
-            WHERE id = ?
-        ''', (car_id,))
-        
+
+        cursor.execute('SELECT is_sold FROM cars WHERE id = ?', (car_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return False
+
+        was_sold = bool(row['is_sold'])
+        if was_sold:
+            cursor.execute('''
+                UPDATE cars
+                SET last_seen = CURRENT_TIMESTAMP,
+                    is_sold = FALSE,
+                    sold_date = NULL
+                WHERE id = ?
+            ''', (car_id,))
+            logger.info(f"Reactivated car ID {car_id} (re-listed after being marked sold)")
+        else:
+            cursor.execute('''
+                UPDATE cars
+                SET last_seen = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (car_id,))
+
         conn.commit()
         conn.close()
-    
+        return was_sold
+
+    def update_car_last_seen(self, car_id):
+        """Update last seen timestamp (reactivates sold cars that reappear)."""
+        return self.touch_car_seen(car_id)
+
+    def count_active_cars(self, dealer_name=None):
+        """Count cars that are currently active (not sold), optionally per dealer."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        if dealer_name:
+            cursor.execute(
+                'SELECT COUNT(*) as active FROM cars WHERE is_sold = FALSE AND dealer_name = ?',
+                (dealer_name,)
+            )
+        else:
+            cursor.execute('SELECT COUNT(*) as active FROM cars WHERE is_sold = FALSE')
+
+        active = cursor.fetchone()['active']
+        conn.close()
+        return active
+
+    def should_skip_sold_marking(self, listing_count, dealer_name=None):
+        """Return True when a scrape looks too incomplete to mark cars sold.
+
+        Skips when listing_count is 0, or below INCOMPLETE_SCRAPE_RATIO of the
+        dealer's currently active inventory. A first scrape against an empty
+        active set is allowed through.
+        """
+        if listing_count <= 0:
+            return True
+
+        active_count = self.count_active_cars(dealer_name)
+        if active_count > 0 and listing_count < INCOMPLETE_SCRAPE_RATIO * active_count:
+            return True
+
+        return False
+
     def mark_cars_as_sold(self, current_autotrack_ids, dealer_name=None):
-        """Mark cars as sold if they're not in current listings"""
+        """Mark cars as sold if they're not in current listings.
+
+        Only cars whose last_seen is older than SOLD_GRACE_DAYS are marked sold.
+        Callers should skip this pass when should_skip_sold_marking() is True.
+        """
         if not current_autotrack_ids:
             return
         
@@ -182,6 +254,7 @@ class Database:
         
         # Create placeholder string for IN clause
         placeholders = ','.join('?' for _ in current_autotrack_ids)
+        grace_modifier = f'-{SOLD_GRACE_DAYS} days'
         
         if dealer_name:
             cursor.execute(f'''
@@ -190,16 +263,16 @@ class Database:
                 WHERE autotrack_id NOT IN ({placeholders}) 
                 AND is_sold = FALSE
                 AND dealer_name = ?
-                AND last_seen < datetime('now', '-2 days')
-            ''', current_autotrack_ids + [dealer_name])
+                AND last_seen < datetime('now', ?)
+            ''', current_autotrack_ids + [dealer_name, grace_modifier])
         else:
             cursor.execute(f'''
                 UPDATE cars 
                 SET is_sold = TRUE, sold_date = CURRENT_TIMESTAMP
                 WHERE autotrack_id NOT IN ({placeholders}) 
                 AND is_sold = FALSE
-                AND last_seen < datetime('now', '-2 days')
-            ''', current_autotrack_ids)
+                AND last_seen < datetime('now', ?)
+            ''', current_autotrack_ids + [grace_modifier])
         
         sold_count = cursor.rowcount
         conn.commit()

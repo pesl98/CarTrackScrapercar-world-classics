@@ -6,6 +6,7 @@ from typing import List, Dict, Optional
 from abc import ABC, abstractmethod
 import time
 import random
+from database import INCOMPLETE_SCRAPE_RATIO
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -303,8 +304,9 @@ class MultiDealerScraper:
                             self.database.update_car_price(existing_car['id'], car_data['price'])
                             updated_cars += 1
                             logger.info(f"Updated price for {dealer_scraper.dealer_name} car {car_data['autotrack_id']}")
-                        
-                        self.database.update_car_last_seen(existing_car['id'])
+
+                        # Always touch on sight so re-listed cars leave sold status
+                        self.database.touch_car_seen(existing_car['id'])
                     else:
                         self.database.add_car(car_data)
                         new_cars += 1
@@ -314,9 +316,18 @@ class MultiDealerScraper:
                 if page > 10:  # Safety limit
                     break
             
-            # Mark cars as sold for this dealer
-            if current_car_ids:
-                self.database.mark_cars_as_sold(current_car_ids, dealer_scraper.dealer_name)
+            unique_current_ids = list(dict.fromkeys(current_car_ids))
+            listing_count = len(unique_current_ids)
+            if self.database.should_skip_sold_marking(listing_count, dealer_scraper.dealer_name):
+                active_count = self.database.count_active_cars(dealer_scraper.dealer_name)
+                logger.warning(
+                    f"Skipping sold-marking for {dealer_scraper.dealer_name}: "
+                    f"scrape found {listing_count} listings vs {active_count} active cars "
+                    f"(threshold {INCOMPLETE_SCRAPE_RATIO:.0%}). Possible incomplete scrape."
+                )
+            else:
+                # Grace: only cars with last_seen older than SOLD_GRACE_DAYS are marked sold
+                self.database.mark_cars_as_sold(unique_current_ids, dealer_scraper.dealer_name)
             
             logger.info(f"Completed {dealer_scraper.dealer_name}: {new_cars} new, {updated_cars} updated")
             return new_cars, updated_cars

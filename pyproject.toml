@@ -1,7 +1,7 @@
 [project]
 name = "repl-nix-workspace"
 version = "0.1.0"
-description = "Add your description here"
+description = "Flask + SQLite tracker for CarWorld Classics inventory"
 requires-python = ">=3.11"
 dependencies = [
     "apscheduler>=3.11.0",

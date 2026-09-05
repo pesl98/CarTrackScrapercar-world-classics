@@ -101,6 +101,10 @@ This is a Flask-based car tracking application that scrapes car listings from Ca
 - Price history tracking for trend analysis
 
 ## Changelog
+- September 5, 2026: **Re-listed cars reactivate; incomplete scrapes skip sold-marking**
+  - `touch_car_seen()` updates `last_seen` and clears `is_sold` / `sold_date` when a sold listing reappears
+  - Sold-marking is skipped if a scrape returns 0 cars or fewer than 70% of that dealer's active inventory
+  - Existing 2-day `last_seen` grace period is unchanged
 - June 22, 2025: Initial setup with CarWorld Classics scraper
 - June 22, 2025: Enhanced make/model extraction from URL patterns
 - June 22, 2025: Fixed pagination logic to prevent infinite loops
