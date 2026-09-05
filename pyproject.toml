@@ -1,0 +1,13 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Flask + SQLite tracker for CarWorld Classics inventory"
+requires-python = ">=3.11"
+dependencies = [
+    "apscheduler>=3.11.0",
+    "beautifulsoup4>=4.13.4",
+    "flask>=3.1.1",
+    "playwright>=1.52.0",
+    "requests>=2.32.3",
+    "trafilatura>=2.0.0",
+]

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car Details - Car Tracker</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-car me-2"></i>Car Tracker
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div id="loading" class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading car details...</p>
+        </div>
+
+        <div id="carDetails" style="display: none;">
+            <!-- Car basic info -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0" id="carTitle">Car Details</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-6">
+                                    <img id="carImage" src="" alt="Car Image" class="img-fluid rounded" style="max-height: 300px;">
+                                </div>
+                                <div class="col-6">
+                                    <table class="table table-borderless">
+                                        <tr>
+                                            <td><strong>Make:</strong></td>
+                                            <td id="carMake">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Model:</strong></td>
+                                            <td id="carModel">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Year:</strong></td>
+                                            <td id="carYear">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Mileage:</strong></td>
+                                            <td id="carMileage">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Fuel Type:</strong></td>
+                                            <td id="carFuelType">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Current Price:</strong></td>
+                                            <td><span id="carPrice" class="badge bg-success fs-6">€0</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Status:</strong></td>
+                                            <td><span id="carStatus" class="badge bg-primary">Active</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Days on Market:</strong></td>
+                                            <td id="carDaysOnMarket">-</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="row mt-3" id="carDescriptionRow" style="display: none;">
+                                <div class="col-12">
+                                    <h6>Description:</h6>
+                                    <p id="carDescription">-</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Timeline Information</h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-borderless">
+                                <tr>
+                                    <td><strong>First Seen:</strong></td>
+                                    <td id="carFirstSeen">-</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Last Seen:</strong></td>
+                                    <td id="carLastSeen">-</td>
+                                </tr>
+                                <tr id="carSoldDateRow" style="display: none;">
+                                    <td><strong>Sold Date:</strong></td>
+                                    <td id="carSoldDate">-</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>AutoTrack ID:</strong></td>
+                                    <td id="carAutotrackId">-</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Price History Chart -->
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Price History</h5>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="priceChart" style="max-height: 400px;"></canvas>
+                            <div id="noPriceHistory" class="text-center text-muted" style="display: none;">
+                                <p>No price history available</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="errorState" style="display: none;">
+            <div class="alert alert-danger" role="alert">
+                <h4 class="alert-heading">Error!</h4>
+                <p id="errorMessage">Car not found or an error occurred while loading the details.</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Get car ID from URL
+        const carId = {{ car_id }};
+        let priceChart = null;
+
+        // Load car details when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCarDetails();
+        });
+
+        async function loadCarDetails() {
+            try {
+                const response = await fetch(`/api/car/${carId}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                displayCarDetails(data.car, data.price_history);
+                
+            } catch (error) {
+                console.error('Error loading car details:', error);
+                showError(error.message);
+            }
+        }
+
+        function displayCarDetails(car, priceHistory) {
+            // Hide loading, show details
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('carDetails').style.display = 'block';
+
+            // Update car information
+            document.getElementById('carTitle').textContent = `${car.make} ${car.model}`;
+            document.getElementById('carMake').textContent = car.make || '-';
+            document.getElementById('carModel').textContent = car.model || '-';
+            document.getElementById('carYear').textContent = car.year || '-';
+            document.getElementById('carMileage').textContent = car.mileage ? formatNumber(car.mileage) + ' km' : '-';
+            document.getElementById('carFuelType').textContent = car.fuel_type || '-';
+            document.getElementById('carPrice').textContent = '€' + formatNumber(car.current_price);
+            document.getElementById('carDaysOnMarket').textContent = Math.round(car.days_on_market || 0) + ' days';
+            document.getElementById('carAutotrackId').textContent = car.autotrack_id;
+
+            // Status
+            const statusElement = document.getElementById('carStatus');
+            if (car.is_sold) {
+                statusElement.textContent = 'Sold';
+                statusElement.className = 'badge bg-danger fs-6';
+                document.getElementById('carSoldDateRow').style.display = 'table-row';
+                document.getElementById('carSoldDate').textContent = formatDate(car.sold_date);
+            } else {
+                statusElement.textContent = 'Active';
+                statusElement.className = 'badge bg-success fs-6';
+            }
+
+            // Image
+            const imageElement = document.getElementById('carImage');
+            if (car.image_url) {
+                imageElement.src = car.image_url;
+                imageElement.style.display = 'block';
+            } else {
+                imageElement.style.display = 'none';
+            }
+
+            // Description
+            if (car.description && car.description.trim()) {
+                document.getElementById('carDescription').textContent = car.description;
+                document.getElementById('carDescriptionRow').style.display = 'block';
+            }
+
+            // Dates
+            document.getElementById('carFirstSeen').textContent = formatDate(car.first_seen);
+            document.getElementById('carLastSeen').textContent = formatDate(car.last_seen);
+
+            // Price history chart
+            if (priceHistory && priceHistory.length > 1) {
+                createPriceChart(priceHistory);
+            } else {
+                document.getElementById('noPriceHistory').style.display = 'block';
+            }
+        }
+
+        function createPriceChart(priceHistory) {
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            
+            const labels = priceHistory.map(entry => formatDate(entry.recorded_at));
+            const prices = priceHistory.map(entry => entry.price);
+
+            priceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Price (€)',
+                        data: prices,
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        tension: 0.1,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value) {
+                                    return '€' + formatNumber(value);
+                                }
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxTicksLimit: 10
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return 'Price: €' + formatNumber(context.parsed.y);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('errorState').style.display = 'block';
+        }
+
+        function formatNumber(num) {
+            return new Intl.NumberFormat('en-US').format(num);
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+    </script>
+</body>
+</html>

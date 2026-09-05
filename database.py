@@ -1,0 +1,501 @@
+import sqlite3
+import json
+from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Cars missing from a scrape are only marked sold after this grace period.
+# Last_seen must be older than SOLD_GRACE_DAYS before mark_cars_as_sold applies.
+SOLD_GRACE_DAYS = 2
+
+# Skip sold-marking when the scrape looks incomplete vs current active inventory.
+# Zero listings, or fewer than this share of the dealer's active cars, is treated
+# as a failed/partial scrape rather than a mass sale.
+INCOMPLETE_SCRAPE_RATIO = 0.70
+
+class Database:
+    def __init__(self, db_path='car_tracker.db'):
+        self.db_path = db_path
+    
+    def get_connection(self):
+        """Get database connection"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+    
+    def init_db(self):
+        """Initialize database tables"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # Cars table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cars (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                autotrack_id TEXT NOT NULL,
+                dealer_name TEXT NOT NULL,
+                make TEXT NOT NULL,
+                model TEXT NOT NULL,
+                year INTEGER,
+                mileage INTEGER,
+                fuel_type TEXT,
+                description TEXT,
+                image_url TEXT,
+                source_url TEXT,
+                current_price INTEGER NOT NULL,
+                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_sold BOOLEAN DEFAULT FALSE,
+                sold_date TIMESTAMP NULL,
+                UNIQUE(autotrack_id, dealer_name)
+            )
+        ''')
+        
+        # Price history table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS price_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                car_id INTEGER NOT NULL,
+                price INTEGER NOT NULL,
+                recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (car_id) REFERENCES cars (id)
+            )
+        ''')
+        
+        # Create indexes for better performance
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_cars_autotrack_id ON cars(autotrack_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_cars_is_sold ON cars(is_sold)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_price_history_car_id ON price_history(car_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_price_history_recorded_at ON price_history(recorded_at)')
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info("Database initialized successfully")
+    
+    def add_car(self, car_data):
+        """Add a new car to the database"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                INSERT INTO cars (autotrack_id, dealer_name, make, model, year, mileage, fuel_type, 
+                                description, image_url, source_url, current_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                car_data['autotrack_id'],
+                car_data.get('dealer_name', 'CarWorldClassics'),
+                car_data['make'],
+                car_data['model'],
+                car_data['year'],
+                car_data['mileage'],
+                car_data['fuel_type'],
+                car_data['description'],
+                car_data['image_url'],
+                car_data.get('source_url', ''),
+                car_data['price']
+            ))
+            
+            car_id = cursor.lastrowid
+            
+            # Add initial price to price history
+            cursor.execute('''
+                INSERT INTO price_history (car_id, price)
+                VALUES (?, ?)
+            ''', (car_id, car_data['price']))
+            
+            conn.commit()
+            logger.info(f"Added new car with ID {car_id}")
+            return car_id
+            
+        except sqlite3.IntegrityError as e:
+            logger.error(f"Car with AutoTrack ID {car_data['autotrack_id']} already exists")
+            raise
+        finally:
+            conn.close()
+    
+    def get_car_by_autotrack_id(self, autotrack_id, dealer_name=None):
+        """Get car by AutoTrack ID and optionally dealer name"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if dealer_name:
+            cursor.execute('SELECT * FROM cars WHERE autotrack_id = ? AND dealer_name = ?', (autotrack_id, dealer_name))
+        else:
+            cursor.execute('SELECT * FROM cars WHERE autotrack_id = ?', (autotrack_id,))
+        car = cursor.fetchone()
+        
+        conn.close()
+        return dict(car) if car else None
+    
+    def get_car_by_id(self, car_id):
+        """Get car by internal ID"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT *, 
+                   (julianday('now') - julianday(first_seen)) as days_on_market
+            FROM cars 
+            WHERE id = ?
+        ''', (car_id,))
+        car = cursor.fetchone()
+        
+        conn.close()
+        return dict(car) if car else None
+    
+    def update_car_price(self, car_id, new_price):
+        """Update car price and add to price history"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE cars 
+            SET current_price = ?, last_seen = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (new_price, car_id))
+        
+        cursor.execute('''
+            INSERT INTO price_history (car_id, price)
+            VALUES (?, ?)
+        ''', (car_id, new_price))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Updated price for car ID {car_id} to {new_price}")
+    
+    def touch_car_seen(self, car_id):
+        """Record that a listing was seen on the current scrape.
+
+        Always updates last_seen. If the car was marked sold (it disappeared
+        and later reappeared), clear is_sold / sold_date and log reactivation.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT is_sold FROM cars WHERE id = ?', (car_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return False
+
+        was_sold = bool(row['is_sold'])
+        if was_sold:
+            cursor.execute('''
+                UPDATE cars
+                SET last_seen = CURRENT_TIMESTAMP,
+                    is_sold = FALSE,
+                    sold_date = NULL
+                WHERE id = ?
+            ''', (car_id,))
+            logger.info(f"Reactivated car ID {car_id} (re-listed after being marked sold)")
+        else:
+            cursor.execute('''
+                UPDATE cars
+                SET last_seen = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (car_id,))
+
+        conn.commit()
+        conn.close()
+        return was_sold
+
+    def update_car_last_seen(self, car_id):
+        """Update last seen timestamp (reactivates sold cars that reappear)."""
+        return self.touch_car_seen(car_id)
+
+    def count_active_cars(self, dealer_name=None):
+        """Count cars that are currently active (not sold), optionally per dealer."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        if dealer_name:
+            cursor.execute(
+                'SELECT COUNT(*) as active FROM cars WHERE is_sold = FALSE AND dealer_name = ?',
+                (dealer_name,)
+            )
+        else:
+            cursor.execute('SELECT COUNT(*) as active FROM cars WHERE is_sold = FALSE')
+
+        active = cursor.fetchone()['active']
+        conn.close()
+        return active
+
+    def should_skip_sold_marking(self, listing_count, dealer_name=None):
+        """Return True when a scrape looks too incomplete to mark cars sold.
+
+        Skips when listing_count is 0, or below INCOMPLETE_SCRAPE_RATIO of the
+        dealer's currently active inventory. A first scrape against an empty
+        active set is allowed through.
+        """
+        if listing_count <= 0:
+            return True
+
+        active_count = self.count_active_cars(dealer_name)
+        if active_count > 0 and listing_count < INCOMPLETE_SCRAPE_RATIO * active_count:
+            return True
+
+        return False
+
+    def mark_cars_as_sold(self, current_autotrack_ids, dealer_name=None):
+        """Mark cars as sold if they're not in current listings.
+
+        Only cars whose last_seen is older than SOLD_GRACE_DAYS are marked sold.
+        Callers should skip this pass when should_skip_sold_marking() is True.
+        """
+        if not current_autotrack_ids:
+            return
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # Create placeholder string for IN clause
+        placeholders = ','.join('?' for _ in current_autotrack_ids)
+        grace_modifier = f'-{SOLD_GRACE_DAYS} days'
+        
+        if dealer_name:
+            cursor.execute(f'''
+                UPDATE cars 
+                SET is_sold = TRUE, sold_date = CURRENT_TIMESTAMP
+                WHERE autotrack_id NOT IN ({placeholders}) 
+                AND is_sold = FALSE
+                AND dealer_name = ?
+                AND last_seen < datetime('now', ?)
+            ''', current_autotrack_ids + [dealer_name, grace_modifier])
+        else:
+            cursor.execute(f'''
+                UPDATE cars 
+                SET is_sold = TRUE, sold_date = CURRENT_TIMESTAMP
+                WHERE autotrack_id NOT IN ({placeholders}) 
+                AND is_sold = FALSE
+                AND last_seen < datetime('now', ?)
+            ''', current_autotrack_ids + [grace_modifier])
+        
+        sold_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        if sold_count > 0:
+            logger.info(f"Marked {sold_count} cars as sold")
+    
+    def get_cars_with_filters(self, page=1, per_page=20, search='', status='all', sort_by='first_seen', sort_order='desc'):
+        """Get cars with pagination and filtering"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        offset = (page - 1) * per_page
+        
+        # Build WHERE clause
+        where_conditions = []
+        params = []
+        
+        if search:
+            where_conditions.append("(make LIKE ? OR model LIKE ? OR description LIKE ?)")
+            search_param = f"%{search}%"
+            params.extend([search_param, search_param, search_param])
+        
+        if status == 'active':
+            where_conditions.append("is_sold = FALSE")
+        elif status == 'sold':
+            where_conditions.append("is_sold = TRUE")
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        # Validate and build ORDER BY clause
+        valid_sort_columns = {
+            'first_seen': 'first_seen',
+            'current_price': 'current_price', 
+            'days_on_market': 'days_on_market',
+            'make': 'make',
+            'model': 'model',
+            'year': 'year'
+        }
+        
+        if sort_by not in valid_sort_columns:
+            sort_by = 'first_seen'
+        
+        if sort_order.lower() not in ['asc', 'desc']:
+            sort_order = 'desc'
+            
+        sort_column = valid_sort_columns[sort_by]
+        
+        # Get total count
+        cursor.execute(f'''
+            SELECT COUNT(*) as total
+            FROM cars
+            WHERE {where_clause}
+        ''', params)
+        total = cursor.fetchone()['total']
+        
+        # Get cars
+        cursor.execute(f'''
+            SELECT *,
+                   CASE 
+                       WHEN is_sold THEN (julianday(sold_date) - julianday(first_seen))
+                       ELSE (julianday('now') - julianday(first_seen))
+                   END as days_on_market,
+                   CASE 
+                       WHEN is_sold THEN 'Sold'
+                       ELSE 'Active'
+                   END as status
+            FROM cars
+            WHERE {where_clause}
+            ORDER BY {sort_column} {sort_order.upper()}
+            LIMIT ? OFFSET ?
+        ''', params + [per_page, offset])
+        
+        cars = [dict(car) for car in cursor.fetchall()]
+        conn.close()
+        
+        return {
+            'cars': cars,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page
+        }
+    
+    def get_price_history(self, car_id):
+        """Get price history for a car"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT price, recorded_at
+            FROM price_history
+            WHERE car_id = ?
+            ORDER BY recorded_at ASC
+        ''', (car_id,))
+        
+        history = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        return history
+    
+    def get_dashboard_stats(self):
+        """Get dashboard statistics"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # Total cars
+        cursor.execute('SELECT COUNT(*) as total FROM cars')
+        total_cars = cursor.fetchone()['total']
+        
+        # Active cars
+        cursor.execute('SELECT COUNT(*) as active FROM cars WHERE is_sold = FALSE')
+        active_cars = cursor.fetchone()['active']
+        
+        # Sold cars
+        cursor.execute('SELECT COUNT(*) as sold FROM cars WHERE is_sold = TRUE')
+        sold_cars = cursor.fetchone()['sold']
+        
+        # Average days on market for all cars
+        cursor.execute('''
+            SELECT AVG(
+                CASE 
+                    WHEN is_sold THEN (julianday(sold_date) - julianday(first_seen))
+                    ELSE (julianday('now') - julianday(first_seen))
+                END
+            ) as avg_days_all
+            FROM cars
+        ''')
+        avg_days_all_result = cursor.fetchone()
+        avg_days_on_market_all = round(avg_days_all_result['avg_days_all'] or 0, 1)
+        
+        # Average days on market for active cars only
+        cursor.execute('''
+            SELECT AVG(julianday('now') - julianday(first_seen)) as avg_days_active
+            FROM cars
+            WHERE is_sold = FALSE
+        ''')
+        avg_days_active_result = cursor.fetchone()
+        avg_days_on_market_active = round(avg_days_active_result['avg_days_active'] or 0, 1)
+        
+        # Actual price changes in last 7 days (only changes > €100)
+        cursor.execute('''
+            SELECT COUNT(*) as price_changes
+            FROM price_history ph1
+            WHERE ph1.recorded_at > datetime('now', '-7 days')
+            AND EXISTS (
+                SELECT 1 FROM price_history ph2 
+                WHERE ph2.car_id = ph1.car_id 
+                AND ph2.recorded_at < ph1.recorded_at 
+                AND ABS(ph2.price - ph1.price) > 100
+            )
+        ''')
+        recent_price_changes = cursor.fetchone()['price_changes']
+        
+        # Average price (active cars only)
+        cursor.execute('''
+            SELECT AVG(current_price) as avg_price
+            FROM cars WHERE is_sold = FALSE AND current_price > 0
+        ''')
+        avg_price_result = cursor.fetchone()
+        avg_price = round(avg_price_result['avg_price'] or 0)
+        
+        # Total value of all active cars
+        cursor.execute('''
+            SELECT SUM(current_price) as total_value
+            FROM cars WHERE is_sold = FALSE AND current_price > 0
+        ''')
+        total_value_result = cursor.fetchone()
+        total_value = round(total_value_result['total_value'] or 0)
+        
+        # Cars sold in last 7 days
+        cursor.execute('''
+            SELECT COUNT(*) as recent_sold
+            FROM cars 
+            WHERE is_sold = TRUE 
+            AND sold_date > datetime('now', '-7 days')
+        ''')
+        recent_sold = cursor.fetchone()['recent_sold']
+        
+        # Cars sold in last 14 days
+        cursor.execute('''
+            SELECT COUNT(*) as recent_sold_14d
+            FROM cars 
+            WHERE is_sold = TRUE 
+            AND sold_date > datetime('now', '-14 days')
+        ''')
+        recent_sold_14d = cursor.fetchone()['recent_sold_14d']
+        
+        # New cars added in last 14 days
+        cursor.execute('''
+            SELECT COUNT(*) as new_cars_14d
+            FROM cars 
+            WHERE first_seen > datetime('now', '-14 days')
+        ''')
+        new_cars_14d = cursor.fetchone()['new_cars_14d']
+        
+        # Days since last car was sold
+        cursor.execute('''
+            SELECT 
+                CASE 
+                    WHEN MAX(sold_date) IS NULL THEN NULL
+                    ELSE ROUND(julianday('now') - julianday(MAX(sold_date)), 0)
+                END as days_since_last_sold
+            FROM cars 
+            WHERE is_sold = TRUE
+        ''')
+        days_since_last_sold_result = cursor.fetchone()
+        days_since_last_sold = days_since_last_sold_result['days_since_last_sold']
+        
+        conn.close()
+        
+        return {
+            'total_cars': total_cars,
+            'active_cars': active_cars,
+            'sold_cars': sold_cars,
+            'avg_days_on_market_all': avg_days_on_market_all,
+            'avg_days_on_market_active': avg_days_on_market_active,
+            'recent_price_changes': recent_price_changes,
+            'avg_price': avg_price,
+            'total_value': total_value,
+            'recent_sold': recent_sold,
+            'recent_sold_14d': recent_sold_14d,
+            'new_cars_14d': new_cars_14d,
+            'days_since_last_sold': days_since_last_sold
+        }

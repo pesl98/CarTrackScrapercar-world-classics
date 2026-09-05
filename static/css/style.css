@@ -1,0 +1,252 @@
+:root {
+    --primary: 220 84% 55%;
+    --secondary: 210 11% 98%;
+    --success: 134 61% 41%;
+    --danger: 354 70% 54%;
+    --warning: 45 100% 51%;
+    --info: 196 77% 55%;
+    --light: 210 17% 96%;
+    --dark: 210 11% 15%;
+    --background: 210 11% 98%;
+    --surface: 0 0% 100%;
+    --text-primary: 210 11% 15%;
+    --text-secondary: 210 9% 31%;
+    --border: 210 18% 87%;
+}
+
+body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--text-primary));
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.navbar-brand {
+    font-weight: 600;
+    font-size: 1.5rem;
+}
+
+.card {
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+}
+
+.table th {
+    background-color: hsl(var(--light));
+    border-bottom: 2px solid hsl(var(--border));
+    font-weight: 600;
+    color: hsl(var(--text-primary));
+}
+
+.table-hover tbody tr:hover {
+    background-color: hsl(var(--light));
+}
+
+.car-image {
+    width: 60px;
+    height: 45px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid hsl(var(--border));
+}
+
+.price-badge {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.status-active {
+    background-color: hsl(var(--success)) !important;
+}
+
+.status-sold {
+    background-color: hsl(var(--danger)) !important;
+}
+
+.days-on-market {
+    font-weight: 500;
+}
+
+.days-on-market.long-term {
+    color: hsl(var(--warning));
+}
+
+.days-on-market.very-long-term {
+    color: hsl(var(--danger));
+}
+
+.btn-view-details {
+    font-size: 0.875rem;
+    padding: 0.375rem 0.75rem;
+}
+
+.pagination .page-link {
+    color: hsl(var(--primary));
+    border-color: hsl(var(--border));
+}
+
+.pagination .page-link:hover {
+    background-color: hsl(var(--light));
+    border-color: hsl(var(--primary));
+}
+
+.pagination .page-item.active .page-link {
+    background-color: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+}
+
+.stats-card {
+    transition: transform 0.2s ease;
+}
+
+.stats-card:hover {
+    transform: translateY(-2px);
+}
+
+.loading-spinner {
+    color: hsl(var(--primary));
+}
+
+.alert-success {
+    background-color: rgba(134, 239, 172, 0.1);
+    border-color: hsl(var(--success));
+    color: hsl(var(--success));
+}
+
+.alert-danger {
+    background-color: rgba(248, 113, 113, 0.1);
+    border-color: hsl(var(--danger));
+    color: hsl(var(--danger));
+}
+
+.form-control:focus {
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.form-select:focus {
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* Dealer badge styling */
+.dealer-badge {
+    display: inline-block;
+    background: var(--bs-secondary);
+    color: white;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-top: 2px;
+    font-weight: 500;
+}
+
+.dealer-badge[data-dealer="CarWorldClassics"] {
+    background: #007bff;
+}
+
+.dealer-badge[data-dealer="KoenExclusief"] {
+    background: #28a745;
+}
+
+/* Car detail page specific styles */
+.car-detail-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.detail-table td {
+    padding: 0.5rem 0;
+    border: none;
+}
+
+.detail-table td:first-child {
+    width: 40%;
+    font-weight: 500;
+    color: hsl(var(--text-secondary));
+}
+
+.price-chart-container {
+    position: relative;
+    height: 400px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+    
+    .car-image {
+        width: 45px;
+        height: 35px;
+    }
+    
+    .btn-view-details {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+    
+    .stats-card h3 {
+        font-size: 1.5rem;
+    }
+    
+    .stats-card h6 {
+        font-size: 0.875rem;
+    }
+}
+
+/* Custom scrollbar for tables */
+.table-responsive::-webkit-scrollbar {
+    height: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: hsl(var(--light));
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 4px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--text-secondary));
+}
+
+/* Animation for loading states */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+/* Empty state styling */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: hsl(var(--text-secondary));
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.empty-state h5 {
+    margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+    margin-bottom: 0;
+}

@@ -1,0 +1,469 @@
+// Global variables
+let currentPage = 1;
+let currentPerPage = 20;
+let currentSearch = '';
+let currentStatus = 'all';
+let currentSortBy = 'first_seen';
+let currentSortOrder = 'desc';
+
+// Initialize the application
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboardStats();
+    loadCars();
+    
+    // Set up search input with debounce
+    const searchInput = document.getElementById('searchInput');
+    let searchTimeout;
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            currentSearch = this.value;
+            currentPage = 1;
+            loadCars();
+        }, 500);
+    });
+    
+    // Status filter change handler
+    document.getElementById('statusFilter').addEventListener('change', function() {
+        currentStatus = this.value;
+        currentPage = 1;
+        loadCars();
+    });
+    
+    // Sort by change handler
+    document.getElementById('sortBySelect').addEventListener('change', function() {
+        currentSortBy = this.value;
+        currentPage = 1;
+        loadCars();
+    });
+    
+    // Sort order change handler
+    document.getElementById('sortOrderSelect').addEventListener('change', function() {
+        currentSortOrder = this.value;
+        currentPage = 1;
+        loadCars();
+    });
+});
+
+// Load dashboard statistics
+async function loadDashboardStats() {
+    try {
+        const response = await fetch('/api/stats');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const stats = await response.json();
+        
+        document.getElementById('stat-total').textContent = formatNumber(stats.total_cars);
+        document.getElementById('stat-active').textContent = formatNumber(stats.active_cars);
+        document.getElementById('stat-sold').textContent = formatNumber(stats.sold_cars);
+        document.getElementById('stat-days-active').textContent = stats.avg_days_on_market_active;
+        document.getElementById('stat-days-all').textContent = stats.avg_days_on_market_all;
+        document.getElementById('stat-changes').textContent = formatNumber(stats.recent_price_changes);
+        document.getElementById('stat-price').textContent = '€' + formatNumber(stats.avg_price);
+        document.getElementById('stat-total-value').textContent = '€' + formatNumber(stats.total_value);
+        document.getElementById('stat-recent-sold').textContent = formatNumber(stats.recent_sold);
+        document.getElementById('stat-recent-sold-14d').textContent = formatNumber(stats.recent_sold_14d);
+        document.getElementById('stat-new-cars-14d').textContent = formatNumber(stats.new_cars_14d);
+        document.getElementById('stat-days-since-sold').textContent = stats.days_since_last_sold !== null ? stats.days_since_last_sold : 'N/A';
+        
+    } catch (error) {
+        console.error('Error loading dashboard stats:', error);
+        showAlert('Error', 'Failed to load dashboard statistics: ' + error.message, 'danger');
+    }
+}
+
+// Load cars with current filters
+async function loadCars() {
+    showLoading(true);
+    
+    try {
+        const params = new URLSearchParams({
+            page: currentPage,
+            per_page: currentPerPage,
+            search: currentSearch,
+            status: currentStatus,
+            sort_by: currentSortBy,
+            sort_order: currentSortOrder
+        });
+        
+        const response = await fetch(`/api/cars?${params}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        displayCars(data.cars);
+        displayPagination(data);
+        
+    } catch (error) {
+        console.error('Error loading cars:', error);
+        showAlert('Error', 'Failed to load cars: ' + error.message, 'danger');
+        displayCars([]); // Show empty state
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Display cars in the table
+function displayCars(cars) {
+    const tbody = document.getElementById('carsTableBody');
+    
+    if (cars.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" class="text-center py-5">
+                    <div class="empty-state">
+                        <i class="fas fa-car-side text-muted"></i>
+                        <h5>No cars found</h5>
+                        <p class="text-muted">Try adjusting your search filters or check back later.</p>
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = cars.map(car => {
+        const imageHtml = car.image_url 
+            ? `<img src="${escapeHtml(car.image_url)}" alt="Car" class="car-image" onerror="this.style.display='none'">`
+            : `<div class="car-image bg-light d-flex align-items-center justify-content-center">
+                 <i class="fas fa-car text-muted"></i>
+               </div>`;
+        
+        const statusClass = car.is_sold ? 'status-sold' : 'status-active';
+        const statusText = car.is_sold ? 'Sold' : 'Active';
+        
+        const daysOnMarket = Math.round(car.days_on_market || 0);
+        let daysClass = 'days-on-market';
+        if (daysOnMarket > 60) daysClass += ' very-long-term';
+        else if (daysOnMarket > 30) daysClass += ' long-term';
+        
+        // Format first seen date
+        const firstSeenDate = car.first_seen ? new Date(car.first_seen).toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        }) : '-';
+        
+        return `
+            <tr class="fade-in">
+                <td>${imageHtml}</td>
+                <td>
+                    <div class="fw-bold">${escapeHtml(car.make)}</div>
+                    <div class="text-muted small">${escapeHtml(car.model)}</div>
+                    <div class="dealer-badge" data-dealer="${escapeHtml(car.dealer_name || 'Unknown')}">${escapeHtml(car.dealer_name || 'Unknown')}</div>
+                </td>
+                <td>${car.year || '-'}</td>
+                <td>
+                    <span class="badge price-badge bg-success">€${formatNumber(car.current_price)}</span>
+                </td>
+                <td>${car.mileage ? formatNumber(car.mileage) + ' km' : '-'}</td>
+                <td>${car.fuel_type || '-'}</td>
+                <td>
+                    <span class="text-muted small">${firstSeenDate}</span>
+                </td>
+                <td>
+                    <span class="${daysClass}">${daysOnMarket} days</span>
+                </td>
+                <td>
+                    <span class="badge ${statusClass}">${statusText}</span>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary btn-view-details" 
+                            onclick="viewCarDetails(${car.id})">
+                        <i class="fas fa-eye me-1"></i>View
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Display pagination
+function displayPagination(data) {
+    const pagination = document.getElementById('pagination');
+    
+    if (data.total_pages <= 1) {
+        pagination.innerHTML = '';
+        return;
+    }
+    
+    let paginationHtml = '';
+    
+    // Previous button
+    if (data.page > 1) {
+        paginationHtml += `
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="changePage(${data.page - 1})">
+                    <i class="fas fa-chevron-left"></i>
+                </a>
+            </li>
+        `;
+    }
+    
+    // Page numbers
+    const startPage = Math.max(1, data.page - 2);
+    const endPage = Math.min(data.total_pages, data.page + 2);
+    
+    if (startPage > 1) {
+        paginationHtml += `
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="changePage(1)">1</a>
+            </li>
+        `;
+        if (startPage > 2) {
+            paginationHtml += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        const activeClass = i === data.page ? 'active' : '';
+        paginationHtml += `
+            <li class="page-item ${activeClass}">
+                <a class="page-link" href="#" onclick="changePage(${i})">${i}</a>
+            </li>
+        `;
+    }
+    
+    if (endPage < data.total_pages) {
+        if (endPage < data.total_pages - 1) {
+            paginationHtml += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+        paginationHtml += `
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="changePage(${data.total_pages})">${data.total_pages}</a>
+            </li>
+        `;
+    }
+    
+    // Next button
+    if (data.page < data.total_pages) {
+        paginationHtml += `
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="changePage(${data.page + 1})">
+                    <i class="fas fa-chevron-right"></i>
+                </a>
+            </li>
+        `;
+    }
+    
+    pagination.innerHTML = paginationHtml;
+}
+
+// Change page
+function changePage(page) {
+    currentPage = page;
+    loadCars();
+}
+
+// Change items per page
+function changePerPage() {
+    currentPerPage = parseInt(document.getElementById('perPageSelect').value);
+    currentPage = 1;
+    loadCars();
+}
+
+// Apply filters
+function applyFilters() {
+    currentSearch = document.getElementById('searchInput').value;
+    currentStatus = document.getElementById('statusFilter').value;
+    currentSortBy = document.getElementById('sortBySelect').value;
+    currentSortOrder = document.getElementById('sortOrderSelect').value;
+    currentPage = 1;
+    loadCars();
+}
+
+// View car details
+function viewCarDetails(carId) {
+    window.location.href = `/car/${carId}`;
+}
+
+// Manual scrape trigger
+async function manualScrape() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    // Show loading state
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Scraping...';
+    
+    try {
+        const response = await fetch('/api/scrape', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('Success', result.message, 'success');
+            // Refresh data
+            loadDashboardStats();
+            loadCars();
+        } else {
+            showAlert('Error', result.error || 'Scraping failed', 'danger');
+        }
+        
+    } catch (error) {
+        console.error('Error during manual scrape:', error);
+        showAlert('Error', 'Failed to start scraping: ' + error.message, 'danger');
+    } finally {
+        // Restore button state
+        button.disabled = false;
+        button.innerHTML = originalText;
+    }
+}
+
+// Show/hide loading spinner
+function showLoading(show) {
+    const loading = document.getElementById('loading');
+    if (loading) {
+        loading.style.display = show ? 'block' : 'none';
+    }
+}
+
+// Show alert modal
+function showAlert(title, message, type = 'info') {
+    const modal = new bootstrap.Modal(document.getElementById('alertModal'));
+    const modalTitle = document.getElementById('alertModalTitle');
+    const modalBody = document.getElementById('alertModalBody');
+    
+    modalTitle.textContent = title;
+    modalBody.innerHTML = `<div class="alert alert-${type} mb-0">${escapeHtml(message)}</div>`;
+    
+    modal.show();
+}
+
+// Utility functions
+function formatNumber(num) {
+    if (!num) return '0';
+    return new Intl.NumberFormat('en-US').format(num);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Download CSV export
+function downloadCSV() {
+    window.location.href = '/api/export/csv';
+}
+
+// Show price changes modal
+async function showPriceChanges() {
+    const modal = new bootstrap.Modal(document.getElementById('priceChangesModal'));
+    modal.show();
+    
+    try {
+        const response = await fetch('/api/price-changes');
+        const data = await response.json();
+        
+        let content = '';
+        
+        // Price Changes Section
+        content += '<h6><i class="fas fa-chart-line me-2"></i>Price Changes</h6>';
+        
+        if (data.price_changes.length === 0) {
+            content += '<p class="text-muted">No price changes recorded yet.</p>';
+        } else {
+            content += `
+                <div class="table-responsive mb-4">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Car</th>
+                                <th>New Price</th>
+                                <th>Previous Price</th>
+                                <th>Change</th>
+                                <th>Percentage</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            data.price_changes.forEach(change => {
+                const changeAmount = change.price_difference || 0;
+                const changePercent = change.percentage_change || 0;
+                const changeClass = changeAmount > 0 ? 'text-success' : changeAmount < 0 ? 'text-danger' : 'text-muted';
+                const changeIcon = changeAmount > 0 ? '↗' : changeAmount < 0 ? '↘' : '→';
+                
+                content += `
+                    <tr>
+                        <td>
+                            <strong>${escapeHtml(change.make)} ${escapeHtml(change.model)}</strong><br>
+                            <small class="text-muted">ID: ${change.autotrack_id}</small>
+                        </td>
+                        <td>€${formatNumber(change.price)}</td>
+                        <td>€${formatNumber(change.previous_price || 0)}</td>
+                        <td class="${changeClass}">
+                            ${changeIcon} €${formatNumber(Math.abs(changeAmount))}
+                        </td>
+                        <td class="${changeClass}">
+                            ${changePercent > 0 ? '+' : ''}${changePercent.toFixed(1)}%
+                        </td>
+                        <td>${new Date(change.recorded_at).toLocaleDateString()}</td>
+                    </tr>
+                `;
+            });
+            
+            content += '</tbody></table></div>';
+        }
+        
+        // Recently Sold Cars Section
+        content += '<h6><i class="fas fa-handshake me-2"></i>Recently Sold Cars</h6>';
+        
+        if (data.sold_cars.length === 0) {
+            content += '<p class="text-muted">No cars marked as sold yet.</p>';
+        } else {
+            content += `
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Car</th>
+                                <th>Final Price</th>
+                                <th>Days on Market</th>
+                                <th>Sold Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            data.sold_cars.forEach(car => {
+                content += `
+                    <tr>
+                        <td>
+                            <strong>${escapeHtml(car.make)} ${escapeHtml(car.model)}</strong><br>
+                            <small class="text-muted">ID: ${car.autotrack_id}</small>
+                        </td>
+                        <td>€${formatNumber(car.current_price)}</td>
+                        <td>${car.days_on_market || 'N/A'} days</td>
+                        <td>${new Date(car.sold_date).toLocaleDateString()}</td>
+                    </tr>
+                `;
+            });
+            
+            content += '</tbody></table></div>';
+        }
+        
+        document.getElementById('priceChangesContent').innerHTML = content;
+        
+    } catch (error) {
+        document.getElementById('priceChangesContent').innerHTML = 
+            '<p class="text-center text-danger">Error loading price changes.</p>';
+    }
+}
+
+// Auto-refresh data every 5 minutes
+setInterval(() => {
+    loadDashboardStats();
+    loadCars();
+}, 5 * 60 * 1000);
